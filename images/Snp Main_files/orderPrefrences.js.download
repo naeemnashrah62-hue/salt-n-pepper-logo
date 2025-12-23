@@ -1,0 +1,546 @@
+$(document).ready(function(){
+  updateTotalQuantityDisplay();
+  displayCartButtonIfCartHasItem();
+  fetchBranches()
+
+  // Function to get cookie expiration time (30 days from now)
+  function getCookieTime() {
+    const oneMonthFromNow = new Date();
+    oneMonthFromNow.setTime(oneMonthFromNow.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30 days in milliseconds
+    return `expires=${oneMonthFromNow.toUTCString()}`;
+  }
+
+  // Function to calculate distance between two points using Haversine formula
+  function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radius of the Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180; // Convert degrees to radians
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in kilometers
+    return distance;
+  }
+  function getLocation() {
+    const userLatitude = getCookie('userLatitude');
+    const userLongitude = getCookie('userLongitude');
+    const branchName = getCookie('branch_name');
+    const orderType = getCookie('order_type');
+    const logo = getCookie('logo');
+    if (branchName == "null") { $("#branch_name").addClass("loading-skeleton"); }
+    if (orderType == "null") { $("#order_type_text").addClass("loading-skeleton"); }
+    if (logo == "null") { $(".header_logo").addClass("loading-skeleton"); }
+    if (userLatitude && userLongitude) {
+      // fetchBranches(parseFloat(userLatitude), parseFloat(userLongitude));
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(showPosition, handleGeolocationError);
+    }
+  }
+  function showPosition(position) {
+    const userLatitude = position.coords.latitude;
+    const userLongitude = position.coords.longitude;
+    var expire = getCookieTime();
+    document.cookie = `userLatitude=${userLatitude}; ${expire}`;
+    document.cookie = `userLongitude=${userLongitude}; ${expire}`;
+    $("#order_type_text").addClass("loading-skeleton");
+    $("#branch_name").addClass("loading-skeleton");
+    $(".header_logo").addClass("loading-skeleton");
+    fetchBranches(userLatitude, userLongitude , findNearestBranch = true);
+  }
+  function handleGeolocationError(error) {
+    console.error('Geolocation error:', error.message);
+    $("#order_type_text").addClass("loading-skeleton");
+    $("#branch_name").addClass("loading-skeleton");
+    $(".header_logo").addClass("loading-skeleton");
+    fetchBranches();
+  }
+  function removeAddToCart() {
+    if ($(".product_cart_btn a").hasClass("add_to_cart")) {
+      $(".product_cart_btn a").removeClass("add_to_cart");
+    }
+    if ($(".product_cart_btn a").hasClass("pop_up_modal")) {
+      $(".product_cart_btn a").removeClass("pop_up_modal");
+    }
+    $(".header_btn_cart a").removeAttr("data-bs-target")
+    if ($(".product_cart_btn a").hasClass("reduce_qty")) {
+      $(".product_cart_btn a").removeClass("reduce_qty");
+    }
+    if($(".detail-page-add-btn").hasClass("detail_add_cart_btn")){
+      $(".detail-page-add-btn").removeClass("detail_add_cart_btn");
+    }
+
+    if ($(".cart_navigation_checkout_btn").is(".proceed_checkout")) {
+      $(".cart_navigation_checkout_btn").addClass("bussiness_not_open").removeClass("proceed_checkout").attr("href", "#");
+    }
+}
+
+
+  
+  function fetchBranches(userLatitude = 0, userLongitude = 0, findNearestBranch = false) {
+    fetch(baseURL+"/api/restaurantLocations?business_id=" + business_id) 
+      .then(response => response.json())
+      .then(data => {
+        var expire = getCookieTime();
+        localStorage.setItem("branches_data", JSON.stringify(data.result) , expire);
+        currency = getCurrencySymbolJs(data.result.currencycode);
+        localStorage.setItem("currencyCode", currency , expire);
+        document.cookie = `decimal_places=${data.result.decimal_places}; ${expire}`;
+        document.cookie = `logo=${data.result.logo}; ${expire}`;
+        $(".header_logo img").attr("src", (data.result.logo) ? data.result.logo : "");
+        if ($(".bussines_logo")) {
+          $(".bussines_logo").attr("src", (data.result.logo) ? data.result.logo : "");
+        }
+        $("#selectDeliveryBranch").html("");
+        $("#selectPickupBranch").html("");
+        const branches = data.result.branches;
+        const deliveryBranches = branches.filter(branch => branch.delivery == 1);
+        const pickupBranches = branches.filter(branch => branch.pickup == 1);
+        const deliveryDropdown = document.getElementById('selectDeliveryBranch');
+        const pickupDropdown = document.getElementById('selectPickupBranch');
+        const deliveryPlaceholderOption = document.createElement('option');
+        if(deliveryBranches.length === 0 && pickupBranches.length === 0){
+          return;
+        }
+        // Add placeholder option to delivery dropdown
+        deliveryPlaceholderOption.disabled = true;
+        deliveryPlaceholderOption.selected = true;
+        deliveryPlaceholderOption.hidden = true;
+        deliveryPlaceholderOption.text = "Please select your location";
+        deliveryDropdown.appendChild(deliveryPlaceholderOption);
+        // Add placeholder option to pickup dropdown
+        const pickupPlaceholderOption = document.createElement('option');
+        pickupPlaceholderOption.disabled = true;
+        pickupPlaceholderOption.selected = true;
+        pickupPlaceholderOption.hidden = true;
+        pickupPlaceholderOption.text = "Please select your location";
+        pickupDropdown.appendChild(pickupPlaceholderOption);
+        if (branches.length === 1 && !(getCookie('order_type'))) {
+          const defaultLocation = branches[0];
+          document.cookie = `branch_id=${defaultLocation.id}; path=/; ${expire}`;
+          document.cookie = `branch_name=${defaultLocation.address + " " + defaultLocation.location + " " + defaultLocation.city}; ${expire}`;
+          if (defaultLocation.delivery === 1) {
+            if (document.getElementById("branch_name")) {
+              document.getElementById("branch_name").innerHTML = defaultLocation.address + " " + defaultLocation.location + " " + defaultLocation.city;
+            }
+            if (document.getElementById("order_type_text")) {
+              document.getElementById("order_type_text").innerHTML = "Delivery From";
+            }
+            document.cookie = `order_type=delivery; path=/; ${expire}`;
+          } else if (defaultLocation.pickup === 1) {
+            if (document.getElementById("branch_name")) {
+              document.getElementById("branch_name").innerHTML = defaultLocation.address + " " + defaultLocation.location + " " + defaultLocation.city;
+            }
+            if (document.getElementById("order_type_text")) {
+              document.getElementById("order_type_text").innerHTML = "Pickup From";
+            }
+            document.cookie = `order_type=pickup ; path=/; ${expire}`;
+          }
+        }
+
+
+
+        if(deliveryBranches.length === 1){
+          $("#find-nearest-branch").addClass("hide");
+          $(".delivery_drop_down_field_home_page").addClass("hide")
+          $(".current_loc_tabs").css("border", "unset");
+        }
+
+        if(pickupBranches.length === 1){
+          $("#find-nearest-branch").addClass("hide");
+        }
+        const branchId = getCookie('branch_id');
+        const branchName = getCookie('branch_name');
+        const orderType = getCookie('order_type');
+        if (orderType === "delivery") {
+          const startOrderButton = document.getElementById('delivery_order');
+          startOrderButton.classList.remove('disabled');
+          selectOptionByValue(deliveryDropdown, branchId);
+        } else if (orderType === "pickup") {
+          const pickupOrderButton = document.getElementById('pickup_order');
+          pickupOrderButton.classList.remove('disabled');
+      selectOptionByValue(pickupDropdown, branchId);
+          if (getCookie("date") && getCookie("date") !== "" && getCookie("Time") && getCookie("Time") !== "") {
+            let date = getCookie("date");
+            let Time = getCookie("Time");
+            let dateTimeString = date + " " + Time;
+            const originalDate = new Date(dateTimeString);
+
+            // Check if the date is valid before formatting
+            if (!isNaN(originalDate.getTime())) {
+              const formattedDate = originalDate.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: '2-digit',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+              });
+              if ((getCookie("order_type")) && getCookie("order_type") != "") {
+                $("#branch_name").append(" &#8226; " + formattedDate)
+              }
+            } else {
+              console.log('Invalid date format');
+            }
+          }
+
+        }
+        // Sort branches alphabetically by location + city
+        const sortedDeliveryBranches = deliveryBranches.sort((a, b) => {
+          const nameA = (a.location + " " + a.city).toLowerCase();
+          const nameB = (b.location + " " + b.city).toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        const sortedPickupBranches = pickupBranches.sort((a, b) => {
+          const nameA = (a.location + " " + a.city).toLowerCase();
+          const nameB = (b.location + " " + b.city).toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+        // Populate delivery dropdown
+        sortedDeliveryBranches.forEach(branch => {
+          const option = document.createElement('option');
+          option.innerHTML = branch.location + " " + branch.city;
+          option.value = branch.id;
+          deliveryDropdown.appendChild(option);
+        });
+
+        // Populate pickup dropdown
+        sortedPickupBranches.forEach(branch => {
+          const option = document.createElement('option');
+          option.innerHTML = branch.location + " " + branch.city;
+          option.value = branch.id;
+          pickupDropdown.appendChild(option);
+        });
+        // Auto-select if only one pickup branch
+
+        if(pickupBranches.length === 1) {
+          pickupDropdown.value = pickupBranches[0].id;
+        }
+        // Auto-select if only one delivery branch
+        if(deliveryBranches.length === 1) {
+          deliveryDropdown.value = deliveryBranches[0].id;
+        }
+        // Remove pickup tab if no pickup branches available
+        if (pickupBranches.length === 0) {
+          document.getElementById('pick_up_tab').style.display = 'none';
+          $("#delivery_tab a").addClass("active");
+          $("#delivery-loc").addClass("active show");
+          if (document.getElementById("order_type_text") && orderType == "null") {
+            document.getElementById("order_type_text").innerHTML = "Delivery From";
+          }
+        }
+        if (deliveryBranches.length === 0) {
+          document.getElementById('delivery_tab').style.display = 'none';
+          $("#delivery-loc").removeClass("active show");
+          $("#pick_up_tab a").addClass("active");
+          $("#pickup-loc").addClass("active show");
+          if (document.getElementById("order_type_text") && orderType == "null") {
+            document.getElementById("order_type_text").innerHTML = "Pickup From";
+          }
+        }
+        deliveryDropdown.addEventListener('change', function () {
+          const startOrderButton = document.getElementById('delivery_order');
+          startOrderButton.classList.remove('disabled');
+        });
+        pickupDropdown.addEventListener('change', function () {
+          const pickupOrderButton = document.getElementById('pickup_order');
+          const delivery = $("#schedule_delivery").val();
+          $("#time_slots").val('Select Date');
+          emptyTimeSlots();
+          const isPickupNow = delivery === "pickup_now";
+          if (isPickupNow) {
+              pickupOrderButton.classList.remove('disabled');
+          }else{
+            pickupOrderButton.classList.add('disabled');
+          }
+          const selectedValue = this.value; // Get the selected value
+          document.cookie = `branch_id=${selectedValue} ; path=/; ${expire}`;
+        });
+        const startOrderButton = document.getElementById('delivery_order');
+        startOrderButton.addEventListener('click', function (e) {
+          e.preventDefault();
+          let selectedBranchId = deliveryDropdown.value;
+          if(selectedBranchId != "Please select your location"){
+            $(".show-error-if-branch-not-selected").text("")
+            var prvBranchId = getCookie('branch_id');
+            if (prvBranchId != "" && prvBranchId != selectedBranchId) {
+              let cartData = JSON.parse(localStorage.getItem("cart")) || [];
+              if (cartData) {
+                localStorage.removeItem("cart");
+                document.cookie = "unique_order_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+              }
+            }
+            let selectedBranchName = deliveryDropdown.options[deliveryDropdown.selectedIndex].text;
+              document.cookie = `branch_id=${selectedBranchId} ; path=/; ${expire}`;
+              document.cookie = `branch_name=${selectedBranchName} ;path=/ ; ${expire}`
+              document.cookie = `order_type=delivery ; path=/ ; ${expire}`
+            if (document.getElementById("branch_name")) {
+              document.getElementById("branch_name").innerHTML = selectedBranchName;
+            }
+            if (document.getElementById("order_type_text")) {
+              document.getElementById("order_type_text").innerHTML = "Delivery From";
+            }
+            window.location.reload();
+        }else{
+          $(".show-error-if-branch-not-selected").text("Please Select Branch")
+        }
+        });
+        const pickupOrderButton = document.getElementById('pickup_order');
+        pickupOrderButton.addEventListener('click', function (e) {
+          e.preventDefault();
+          let selectedBranchId = pickupDropdown.value;
+          if(selectedBranchId != "Please select your location"){
+            $(".show-error-if-branch-not-selected").text("")
+
+          let selectedBranchName = pickupDropdown.options[pickupDropdown.selectedIndex].text;
+          document.cookie = `branch_id=${selectedBranchId} ; path=/ ; ${expire}`;
+          document.cookie = `branch_name=${selectedBranchName}; path=/ ; ${expire}`
+          document.cookie = `order_type=pickup ; path=/;${expire}`
+          if (document.getElementById("branch_name")) {
+            document.getElementById("branch_name").innerHTML = selectedBranchName;
+          }
+          if (document.getElementById("order_type_text")) {
+            document.getElementById("order_type_text").innerHTML = "Pickup From";
+          }
+          window.location.reload();
+        }else{
+          $(".show-error-if-branch-not-selected").text("Please Select Branch")
+        }
+        });
+        let nearestBranch = null;
+
+        if (userLatitude !== 0 && userLongitude !== 0) {
+            let minDistance = Infinity;
+            branches.forEach(branch => {
+              const distance = calculateDistance(userLatitude, userLongitude, branch.lat, branch.lng);
+              if (distance < minDistance) {
+                  minDistance = distance;
+                  nearestBranch = branch;
+              }
+          });
+              if (nearestBranch) {
+                  
+                selectOptionByValueNearest(nearestBranch.id.toString());
+                selectOptionByValueNearest(nearestBranch.id.toString());
+              }
+             function selectOptionByValueNearest(nearestBranchId)
+              {
+                var expire = getCookieTime();
+                document.cookie = `branch_id=${nearestBranchId} ; path=/; ${expire}`;
+              }
+        }
+        function selectOptionByValue(dropdown, value) {
+          for (let i = 0; i < dropdown.options.length; i++) {
+            if (dropdown.options[i].value === value) {
+              dropdown.selectedIndex = i; 
+              break;
+            }
+          }
+        }
+        const selectedBranchId = getCookie('branch_id');
+        if (selectedBranchId) {
+          const selectedBranch = branches.find(branch => branch.id == selectedBranchId);
+          try {
+            localStorage.setItem('branchWiseCalculation', selectedBranch.settings);
+            if (selectedBranch && selectedBranch.timing) {
+              const timingData = JSON.parse(selectedBranch.timing);
+              let businessHoursHTML = '';
+              if ((timingData.hours) && timingData.hours != "") {
+                business_time = timingData.hours
+                var timezoneOffset = data.result.time_zone;
+                var [offsetSign, offsetHours, offsetMinutes] = [timezoneOffset[0],parseInt(timezoneOffset.slice(1, 3), 10),parseInt(timezoneOffset.slice(4), 10) ];
+                var totalOffsetMinutes = (offsetHours * 60 + offsetMinutes) * (offsetSign === "-" ? -1 : 1);
+                var currentDate = new Date();
+                var localTime = new Date(currentDate.getTime() + (currentDate.getTimezoneOffset() * 60000) + totalOffsetMinutes * 60000);
+                var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                var currentDayName = days[localTime.getDay()];
+                var currentTime = localTime.getHours() * 60 + localTime.getMinutes(); 
+                let formated_time, openTime, closeTime;
+                for (const key in business_time) {
+
+                  const dayData = business_time[key];
+                  const dayName = (dayData[0] && dayData[0].alias && dayData[0].alias !== "") ? dayData[0].alias : "";
+                  const timings = (dayData[0] && dayData[0].timing && dayData[0].timing[2]) ? dayData[0].timing[2] : null;
+
+                  if (dayData.length == 2) {
+                    let timings_slot_2_start = business_time[key][0]['timing'][2][0];
+                    let timings_slot_2_end = business_time[key][0]['timing'][2][1];
+                    let timings_slot_3_start = business_time[key][1]['timing'][2][0];
+                    let timings_slot_3_end = business_time[key][1]['timing'][2][1];
+                    // Format times using the helper function
+                    timings_slot_2 = formatTime(timings_slot_2_start) + " - " + formatTime(timings_slot_2_end);
+                    timings_slot_3 = formatTime(timings_slot_3_start) + " - " + formatTime(timings_slot_3_end);
+                    // Combine the formatted times
+                    formated_time =  timings_slot_2 +" <br> " + timings_slot_3 ;
+                } else {
+                    if (dayData[0] && dayData[0].timing && dayData[0].timing != "") {
+                      formated_time = dayData[0].timing[2][0] + " - " + dayData[0].timing[2][1];
+                    }
+                  }
+                  if (dayName == currentDayName) {
+                    if (!timings) {
+                      $(".hours_bar_content_hours").attr("style", "display:none !important");
+                      $(".hours_bar").addClass("hide");
+                      $("#business_hours").html("Closed");
+                    } else {
+                      if (dayData.length == 2) {
+                        openTimeSlotOne = timeToMinutes(business_time[key][0]['timing'][2][0]);
+                        closeTimeSlotOne = timeToMinutes(business_time[key][0]['timing'][2][1]);
+                        openTimeSloTwo = timeToMinutes(business_time[key][1]['timing'][2][0]);
+                        closeTimeSloTwo = timeToMinutes(business_time[key][1]['timing'][2][1]);
+                        if (currentTime >= openTime && currentTime <= closeTime) {
+                          openTime = timeToMinutes(business_time[key][1]['timing'][2][0]);
+                          closeTime = timeToMinutes(business_time[key][1]['timing'][2][1]);
+                        }
+                      } else {
+                        openTime = timeToMinutes(timings[0]);
+                        closeTime = timeToMinutes(timings[1]);
+                      }
+                      if (currentTime >= openTime && currentTime <= closeTime) {
+                        if (dayData.length == 2) {
+
+                          if (currentTime >= openTimeSlotOne && currentTime <= closeTimeSlotOne) {
+                            $("#business_hours").html("open");
+                          } else if (currentTime >= openTimeSloTwo && currentTime <= closeTimeSloTwo) {
+                            $("#business_hours").html("open");
+                          } else {
+                            $("#business_hours").html("Closed");
+                            $(".product_cart_btn a").addClass("bussiness_not_open")
+                            $(".detail_add_cart_btn").addClass("bussiness_not_open")
+                            $(".proceed_checkout").addClass("bussiness_not_open")
+                          }
+                        } else {
+                          $("#business_hours").html("Open");
+                        }
+
+                      } else {
+                        if (dayData.length == 2) {
+                          if (currentTime >= openTimeSlotOne && currentTime <= closeTimeSlotOne) {
+                            $("#business_hours").html("open");
+                          } else if (currentTime >= openTimeSloTwo && currentTime <= closeTimeSloTwo) {
+                            $("#business_hours").html("open");
+                          } else {
+                            $("#business_hours").html("Closed");
+                            $(".product_cart_btn a").addClass("bussiness_not_open")
+                            $(".header_btn_cart a").addClass("bussiness_not_open")
+                            $(".detail_add_cart_btn").addClass("bussiness_not_open")
+                            $(".proceed_checkout").addClass("bussiness_not_open")
+                            removeAddToCart();
+                          }
+                        } else {
+                          $("#business_hours").html("Closed");
+                          $(".product_cart_btn a").addClass("bussiness_not_open")
+                          $(".header_btn_cart a").addClass("bussiness_not_open")
+                          $(".detail_add_cart_btn").addClass("bussiness_not_open")
+                          $(".proceed_checkout").addClass("bussiness_not_open")
+                          removeAddToCart();
+                        }
+
+                      }
+                      $(".hours_bar").removeClass("hide");
+                    }
+                    if ($("#opening-business-day")) {
+                      $("#opening-business-day").html(`${dayName}`);
+                    }
+
+                    if ($("#opening-time")) {
+                      $("#opening-time").html(`${formated_time}`);
+                    }
+                  }
+                  let openOrClose, color
+                  if (dayName === currentDayName) {
+                      const isClosed = $("#business_hours").html() === "Closed";
+                      openOrClose = isClosed ? "Closed" : "Open";
+                      color = isClosed ? "Red" : "Green";
+                      businessHoursHTML += `<div><p>Today <span style='font-size:14px;color:${color} !important'>(${openOrClose})</span></p> ${formated_time}</div>`;
+                  } else {
+                      businessHoursHTML += `<div><p>${dayName}</p> ${formated_time}</div>`;
+                  }                  
+                }
+                function formatTime(time) {
+                  if (time === "00:00 AM") {
+                      return "12:00 AM";
+                  }
+                  // Assuming the time format is "HH:mm"
+                  const [hour, minute] = time.split(':');
+                  let ampm = "";
+                  let formattedHour = parseInt(hour, 10);
+              
+                  if (formattedHour === 0) {
+                      formattedHour = 12; // Midnight hour should be 12
+                  } else if (formattedHour === 12) {
+                      ampm = ""; // Noon should be PM
+                  } else if (formattedHour > 12) {
+                      formattedHour -= 12; // Convert PM hours to 12-hour format
+                      ampm = "";
+                  }
+                  
+                  return `${formattedHour}:${minute} ${ampm}`;
+              }
+                function timeToMinutes(timeString) {
+                  var timeComponents = timeString.split(/:| /);
+                  var hours = parseInt(timeComponents[0]);
+                  var minutes = parseInt(timeComponents[1]);
+                  var period = timeComponents[2].toUpperCase();
+                  if (period === "PM" && hours < 12) {
+                    hours += 12;
+                  } else if (period === "AM" && hours === 12) {
+                    hours = 0;
+                  }
+                  var totalMinutes = hours * 60 + minutes;
+                  return totalMinutes;
+                }
+
+
+                const businessHoursPopup = document.getElementById('business_hours_popup');
+                if (businessHoursPopup) {
+                  businessHoursPopup.innerHTML = businessHoursHTML;
+                } else {
+                  console.log("Error: Element with ID 'business_hours_popup' not found.");
+                }
+                if (selectedBranch.phoneno != "") {
+                  let phone_number = selectedBranch.phoneno.split(",")
+                  phone_number.forEach((element, index) => {
+                    $("#phone_number_popup").append(`<a class="business_no" href="tel:${element}">${element}</a>`);
+                  })
+                  $(".hours_bar").removeClass("hide")
+                } else {
+                  $("#phone_number_bar").addClass("hide");
+                }
+
+              } else {
+                $(".hours_bar").attr("style", "diplay:none !important");
+              }
+            } else {
+              console.log('Error: selectedBranch or selectedBranch.timing is undefined');
+            }
+          } catch (error) {
+            console.log('Error:', error);
+          }
+
+          // Select the branch stored in the cookie
+          selectOptionByValue(deliveryDropdown, selectedBranchId);
+          selectOptionByValue(pickupDropdown, selectedBranchId);
+        }
+
+        $("#order_type_text").removeClass("loading-skeleton")
+        $("#branch_name").removeClass("loading-skeleton");
+        $(".header_logo").removeClass("loading-skeleton");
+        if (branchId == '' || branchId == null) {
+          // const requiresBranch = document.querySelector('[data-requires-branch="true"]');
+          const isStaticPage = document.querySelector('meta[name="page-type"]')?.content === 'static';
+            if (!isStaticPage) {
+              $("#currentLoc").css("pointer-events", "none");
+              $(".current_loc_tabs .cross-icon").addClass("hide");
+              $("#currentLoc").modal("show");
+            }
+        }
+      })
+  }
+  $("#find-nearest-branch").click(function () {
+    getLocation();
+  })
+
+});

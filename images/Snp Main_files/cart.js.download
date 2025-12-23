@@ -1,0 +1,2413 @@
+$(document).ready(function () {
+    let reorder = getCookie("reorder");
+    let isReorder = JSON.parse(reorder);
+    if(isReorder.getCart == true){
+
+      fetch('/cart/getCart', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+        .then(response => response.json())
+        .then(data => {
+           console.log(data);
+          if (data.status == "success") {
+            console.log(data.result);
+            localStorage.setItem("cart", JSON.stringify(data.result));
+            render_cart();
+            updateTotalQuantityDisplay();
+
+            // Set isReorder.getCart to false after successful cart fetch
+            isReorder.getCart = false;
+            var expire = getCookieTime();
+            document.cookie = `reorder=${JSON.stringify(isReorder)}; path=/; ${expire}`;
+            console.log("isReorder.getCart set to false");
+          } else {
+            console.error("Error fetching cart:", data.message || data.error);
+          }
+        })
+        .catch(error => {
+          console.error("Error fetching reorder cart:", error);
+        })
+        .finally(() => {
+          // Always set isReorder.getCart to false, even if there's an error
+          isReorder.getCart = false;
+          var expire = getCookieTime();
+          document.cookie = `reorder=${JSON.stringify(isReorder)}; path=/; ${expire}`;
+        });
+
+    }
+
+});
+
+//store location selection and diffrentiate according to delivery and pick up
+const update_cart = async (
+  newJsonString,
+  plus_response,
+  qty_inceased = false,
+  sidebar_item = false
+) => {
+  var status = "";
+  const checkMinimumSpend = () => {
+    const branches_data = JSON.parse(localStorage.getItem("branches_data")) || {};
+    const minimum_spend = branches_data.minimum_spend || 0;
+    let subtotal = $(".side-bar-item-total").text() ? $(".side-bar-item-total").text() : "0";
+    subtotal = parseFloat(subtotal.replace(/,/g, ''));
+    if (subtotal < minimum_spend) {
+      console.log("Cannot proceed to checkout: minimum spend not met");
+      return false;
+    }
+    return true;
+  };
+  let requestData = {};
+  if (plus_response == true) {
+    requestData = {
+      productData: newJsonString,
+      additionalData: {
+        Event: "add",
+      },
+      increase_qty: qty_inceased,
+      platform: sidebar_item,
+    };
+  } else if (plus_response == "false") {
+    requestData = {
+      productData: newJsonString,
+      additionalData: {
+        Event: "sub",
+      },
+      increase_qty: qty_inceased,
+      platform: sidebar_item,
+    };
+  } else if (plus_response == "delete") {
+    requestData = {
+      productData: newJsonString,
+      additionalData: {
+        Event: "delete",
+      },
+      increase_qty: qty_inceased,
+      platform: sidebar_item,
+    };
+  }
+  try {
+    const response = await fetch("/cart/updateCart", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestData),
+    });
+    if (!response.ok) {
+      return false;
+    } else {
+      const data = await response.json();
+      status = data;
+      if (data.result.result && Object.keys(data.result.result).length > 0) {
+        localStorage.setItem("cart", JSON.stringify(data.result.result));
+        if (plus_response == true) {
+          $(".success_message_box").addClass("show");
+          setTimeout(() => {
+            $(".success_message_box").removeClass("show");
+          }, 3000);
+        }
+      } else {
+        $(".error_message_box").addClass("show");
+        setTimeout(() => {
+          $(".error_message_box").removeClass("show");
+        }, 3000);
+      }
+      render_cart();
+      let minimum_Spend = checkMinimumSpend();
+      if (minimum_Spend == true) {
+        $(".minimum_spend_text").removeClass("text-danger");
+        $(".minimum_spend_parent").addClass("hide");
+        $(".cart_navigation_item_list").removeClass("active");
+      } else {
+        const branches_data =
+          JSON.parse(localStorage.getItem("branches_data")) || {};
+        $(".minimum_spend_parent").removeClass("hide");
+        $(".cart_navigation_item_list").addClass("active");
+
+
+        $(".minimum_spend_text").addClass("text-danger");
+        $(".minimum_spend_text").text(
+          "Min order amount must be greater than " +
+          currency +
+          " " +
+          branches_data.minimum_spend
+        );
+      }
+
+ 
+      var children = $("#cartItemsContainer").children();
+      var noItemExist = $(".no_item_exist");
+      var cartNavigationHeaderDetail = $(".cart_navigation_footer_detail");
+      var cartnavigationcontent = $(".cart_navigation_content");
+      if (children.length <= 0) {
+        noItemExist.show();
+        cartNavigationHeaderDetail.attr("style", "display:none !important");
+        cartnavigationcontent.hide();
+      } else {
+        noItemExist.hide();
+        cartNavigationHeaderDetail.removeAttr("style");
+        cartnavigationcontent.show();
+      }
+
+      updateTotalQuantityDisplay();
+      displayCartButtonIfCartHasItem();
+      return status; // Return the status after all operations
+    }
+  } catch (error) {
+    console.error("Error updating cart:", error);
+    var modal = $("#product_detail");
+    if (modal.length > 0) { 
+      $("#product_detail").modal("toggle");
+    }
+      $(".detail_add_cart_btn").removeClass('Not_allowed')
+    throw error;
+  }
+};
+
+
+function displayCartButtonIfCartHasItem() {
+  const totalQuantity = parseFloat($(".total_quantity_display").text());
+  if (totalQuantity > 0) {
+    $(".header_cart_icon").show();
+    if (window.matchMedia("(max-width: 540px)").matches) {
+        $(".defaul-footer").css("padding-bottom", "76px");
+    }
+  } else {
+    $(".header_cart_icon").hide();
+    if (window.matchMedia("(max-width: 540px)").matches) {
+      $(".defaul-footer").css("padding-bottom", "15px");
+  }
+  }
+}
+
+
+function getCookieTime(){
+  const oneMonthFromNow = new Date();
+  oneMonthFromNow.setTime(oneMonthFromNow.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30 days in milliseconds
+  var expires = `expires=${oneMonthFromNow.toUTCString()}`;
+  return expires;
+}
+
+function formate_price(price) {
+  let decimal = parseInt(getCookie("decimal_places")) || 0; // Parse the value as an integer, default to 0 if parsing fails
+  const formattedPrice = price.toLocaleString("en-US", {
+    minimumFractionDigits: decimal,
+    maximumFractionDigits: decimal,
+  });
+  return formattedPrice;
+}
+// location selection end
+$(document).ready(function () {
+  const branches_data = JSON.parse(localStorage.getItem("branches_data")) || {};
+  const minimumSpend = branches_data.minimum_spend 
+  let subtotal = $(".side-bar-item-total").text() ? $(".side-bar-item-total").text() : "0";
+  subtotal = parseFloat(subtotal.replace(/,/g, ''));
+  if (minimumSpend > subtotal) {
+    $("#minimum_spend_price").text(
+      "Min order amount must be greater than " + branches_data.currencycode + " " + branches_data.minimum_spend
+    );
+    $(".cart_navigation_item_list").addClass("active")
+    $(".minimum_spend_text").addClass("text-danger");
+  } else {
+    $(".cart_navigation_item_list").removeClass("active")
+    $(".minimum_spend_text").removeClass("text-danger");
+    $(".minimum_spend_parent").addClass("hide");
+  }
+});
+
+let productJson = {};
+let currency = "";
+currency = localStorage.getItem('currencyCode');
+currency = currency ? currency.replace(/"/g, '') : '';
+
+function getCookie(cookieName) {
+  const name = cookieName + "=";
+  const decodedCookie = decodeURIComponent(document.cookie);
+  const cookieArray = decodedCookie.split(";");
+
+  for (let i = 0; i < cookieArray.length; i++) {
+    let cookie = cookieArray[i];
+    while (cookie.charAt(0) === " ") {
+      cookie = cookie.substring(1);
+    }
+    if (cookie.indexOf(name) === 0) {
+      return cookie.substring(name.length, cookie.length);
+    }
+  }
+  return null;
+}
+
+if (getCookie("total_qty") && getCookie("total_qty") > 0) {
+  $(".header_cart_icon").addClass("qty_increased");
+}
+$(document).on("click", ".pop_up_modal", function (e) {
+  e.preventDefault();
+  if (
+    getCookie("order_type") &&
+    getCookie("order_type") != "" &&
+    getCookie("branch_id") &&
+    getCookie("branch_id") != ""
+  ) {
+    $("a.minus_item_qty").addClass("disabled");
+    let hiddenDom = $(this)
+      .closest(".product_cart_btn")
+      .siblings(".hidden_field")
+      .val();
+    try {
+      if ($('.product_detail_prices').length > 0 && productJson && productJson.price !== "" && productJson.currency !== "") {
+        const branches_data = JSON.parse(localStorage.getItem("branches_data")) || {};
+        if (branches_data.decimal_places == 2) {
+          if($('.product_detail_prices').length > 0){
+            $(".detail_prices").text(productJson.currency +' '+productJson.price);
+          }
+        } 
+      }
+      productJson = decryptJson(hiddenDom);
+      UiResetTweaks();
+      renderModalContent(productJson);
+      $("#product_detail").modal("toggle");
+    } catch (error) {
+      console.log(error.message);
+    }
+  } else {
+    $("#currentLoc").modal("toggle");
+  }
+});
+
+function truncateHtml(html, wordLimit) {
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = html;
+  let wordCount = 0;
+  let truncatedHtml = "";
+  const selfClosingTags = ["img", "br", "hr", "input", "meta", "link"];
+  function traverseNodes(node) {
+      if (wordCount >= wordLimit) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+          const words = node.textContent.trim().split(/\s+/);
+          const remainingWords = wordLimit - wordCount;
+          if (words.length > remainingWords) {
+              truncatedHtml += words.slice(0, remainingWords).join(" ");
+              wordCount += remainingWords;
+              truncatedHtml += "..."; // Append ellipsis directly after the last word
+              truncatedHtml += "<a style='font-size:14px !important; font-weight:600 !important;' href='#' class='read-more-link'>Read More</a>";
+              return; // Stop processing further nodes
+          } else {
+              truncatedHtml += node.textContent;
+              wordCount += words.length;
+          }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tagName = node.tagName.toLowerCase();
+          truncatedHtml += `<${tagName}`;
+          Array.from(node.attributes).forEach(attr => {
+              truncatedHtml += ` ${attr.name}="${attr.value}"`;
+          });
+          truncatedHtml += ">";
+          node.childNodes.forEach(child => traverseNodes(child));
+          if (!selfClosingTags.includes(tagName)) {
+              truncatedHtml += `</${tagName}>`;
+          }
+      }
+  }
+  traverseNodes(tempDiv);
+  return truncatedHtml.trim(); // Ensure no additional spaces
+}
+
+function renderModalContent(productJson) {
+  let imagePath = productJson.image && productJson.image.split('/').pop() != "no_image.jpg" ? productJson.image : getCookie('logo');
+  let discountedValue = productJson.discount_display ? productJson.discount_display : 0;
+  let productPrice = productJson.price ? productJson.price : 0;
+  let finalPrice = productPrice - discountedValue;
+  let slug = creatSlug(productJson.name);
+  var fullDesc = productJson.desc ? productJson.desc.trim() : "";
+  var maxLength = 25; 
+  var productDescHtml = "";
+  const wordCount = fullDesc.split(/\s+/).length;
+  let currencyCode = localStorage.getItem('currencyCode');
+  if (wordCount > maxLength) {
+    const shortDesc = truncateHtml(fullDesc, maxLength);
+    productDescHtml = `
+        <div class="desktop_product_desc short-desc">
+            ${shortDesc}
+        </div>
+        <div class="desktop_product_desc full-desc hide">
+            ${fullDesc}
+            <a style='font-size:14px !important;font-weight:400px !important'  href="#" class="read-less-link">Read Less</a>
+        </div>
+    `;
+  } else {
+    productDescHtml = `<div class="desktop_product_desc">${fullDesc}</div>`;
+  }
+  if(finalPrice == 0){
+    $(".btn_popup_curreny").addClass("hide");
+  }else {
+    $(".poup_orignal_price").text(formate_price(finalPrice));
+    $(".popup_curreny").text(currencyCode);
+    $(".price_btn").html(formate_price(Number(finalPrice)));
+  }
+  $("#pop_up_images").attr("src", imagePath);
+  $("#product_name,#desktop_product_name").text(productJson.name);
+  $('.popup-product-category').text(productJson.category);
+  $(".btn_popup_curreny").text(currencyCode);
+  $(".expand-icon a").attr("href", '/product/'+slug+'-'+productJson.menu_item_id);
+  $('#popup-product-description').html(productDescHtml);
+  if (productJson.discount_display != 0 && productJson.discount_display != "") {
+    $(".poup_discount_price .currency").text(currencyCode);
+    $(".poup_discount_price .price").text(formate_price(Number(productPrice))); // Apply formatting
+  }
+  
+  $(".popup_qty").attr("id", productJson.menu_item_id + "_qty");
+  $(".price_one").attr("id", productJson.menu_item_id + "_price_one");
+  $(".price_two").attr("id", productJson.menu_item_id + "_price_two");
+
+  let accordionFlush = $("#optionsetAccordion");
+
+  var htmlContent = productJson.desc;
+  var $tempDiv = $("<div>").html(htmlContent);
+  if ($tempDiv.length) {
+    $("#desc_sec,#desktop_product_desc").html(htmlContent);
+  } else {
+    $("#desc_sec,#desktop_product_desc").text(htmlContent);
+  }
+
+  if (productJson.options && productJson.options.length > 0) {
+    accordionFlush.show().empty();
+    productJson.options.forEach((element, index) => {
+      accordionFlush.append(
+        renderAccordionElement(element, index, productJson)
+      );
+    });
+    if(productJson.allow_note == 1){
+      $("#special-note").html(`<label style='font-weight:600' class='my-2' for="">Note</label><textarea style='font-size: 12px;' id='special-${productJson.menu_item_id}' class="form-control" name="comment" id="comment"></textarea>`)
+    }
+  } else {
+    accordionFlush.hide();
+  }
+}
+function creatSlug(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+$(function() {
+  $(document).on('click', '.read-more-link', function(e) {
+    e.preventDefault();
+    var shortDesc = $(this).closest('.short-desc');
+    shortDesc.addClass("hide");
+    $('.full-desc').removeClass('hide');
+  });
+''
+  $(document).on('click', '.read-less-link', function(e) {
+    e.preventDefault();
+    var fullDesc = $(this).closest('.full-desc');
+    fullDesc.addClass("hide");
+    $('.short-desc').removeClass('hide');
+  });
+});
+
+function renderAccordionElement(element, index, productJson) {
+  // Check if the element has options
+  if (element.items && Array.isArray(element.items)) {
+    const inputType =
+      element.min_quantity == 1 && element.quantity == 1 ? "radio" :
+        (element.min_quantity == 0 && element.quantity > 1) ? "number" : "checkbox";
+    const isOptional = element.quantity == 0 ? "Optional" : "Required";
+    const outerOptionsetId = element.id; // Unique identifier for outer option set
+    const innerOptionCount = element.items.reduce(
+      (count, option) => count + (option.items.length || 0),
+      0
+    );
+    let currencyCode = localStorage.getItem('currencyCode');
+    // Generate the HTML for the accordion element with options
+    return `
+    ${inputType === "number" ? `<div class="single_optionset d-flex flex-column">
+      <h2 class="optionset_header d-flex flex-column" id="optionsetheading${index}">
+          <button class="optionset_header_btn accordion-button d-flex align-items-center justify-content-between"
+              type="button" data-bs-toggle="collapse" data-bs-target="#optionsetCollapse${index}"
+              aria-expanded="false" aria-controls="optionsetCollapse${index}">
+              <div class="optionset_header_data d-flex flex-column">
+                  <span>${element.name}</span>
+                  <div class='d-flex align-items-center'>
+                  <small class='small_validation error_validation_${element.menu_item_id} ' name="${element.name}" id="${element.id}">${isOptional}&nbsp</small>
+                  <label name="${element.name}" id="${element.id}" class='lable_validation'></label>
+                  </div>
+              </div>
+              <i class="fas fa-chevron-down ms-auto"></i>
+          </button>
+      </h2>
+      <div id="optionsetCollapse${index}" class="accordion-collapse collapse show"
+          aria-labelledby="optionsetheading${index}" data-bs-parent="#optionsetAccordion">
+          <ul class="optionset_listing d-flex">
+              ${element.items
+          .map(
+            (option, i) => `
+                  <li>
+                      <div class='option_set_values counter_parent'>
+                          
+                          ${option.image && option.image != "https://static.tossdown.com/images/"
+                ? '<figure class="w-100"><img class="w-100 h-100 object-fit-contain" src="' + option.image + '" /></figure>'
+                : ""}
+                          <small>${option.name}</small>
+                          <span>${option.price && option.price != 0 && option.price != 0.0 && option.price != "0" && option.price != "0.00" ? currencyCode+' '+ formate_price(Number(option.price)) : ""}</span>
+<div class="counter product_cart_btn">
+                          <a class="counter-btn minus qty_increased">-</a>
+                          <input data-qty-min="${((element.min_quantity) && element.min_quantity != "" ? element.min_quantity : 0)}" type="checkbox" data-qty="${element.quantity}" data-weight="${option.weight_value},${option.weight_unit}" class="option_set_validation" name="${element.name}" data-id="${option.id}" value="${option.name},${option.price}" data-qty-current="0">
+                          <span class='counter-input'>0</span>
+                          <a class="counter-btn plus qty_increased">+</a>
+                      </div>
+
+                      </div>
+                  </li>
+              `
+          )
+          .join("")}
+          </ul>
+          ${innerOptionCount > 0
+          ? `
+                    <div class='inner_options_container d-flex flex-column inner_option_parent' id="innerOptionsContainer_${outerOptionsetId}">
+                        <div class="inner_optionset_listing d-flex" id="inner_option_input"></div>
+                    </div>
+                `
+          : ""
+        }
+      </div>
+  </div>` :
+        `<div class="single_optionset d-flex flex-column">
+          <h2 class="optionset_header d-flex flex-column" id="optionsetheading${index}">
+              <button class="optionset_header_btn accordion-button d-flex align-items-center justify-content-between"
+                  type="button" data-bs-toggle="collapse" data-bs-target="#optionsetCollapse${index}"
+                  aria-expanded="false" aria-controls="optionsetCollapse${index}">
+                  <div class="optionset_header_data d-flex flex-column">
+                      <span>${element.name}</span>
+                      <div class='d-flex align-items-center'>
+                      <small class='small_validation error_validation_${element.menu_item_id} ' name="${element.name}" id="${element.id}">${isOptional}&nbsp</small>
+                      <label name="${element.name}" id="${element.id}" class='lable_validation'></label>
+                      </div>
+                  </div>
+                  <i class="fas fa-chevron-down ms-auto"></i>
+              </button>
+          </h2>
+          <div id="optionsetCollapse${index}" class="accordion-collapse collapse show"
+              aria-labelledby="optionsetheading${index}" data-bs-parent="#optionsetAccordion">
+              <ul class="optionset_listing d-flex">
+                  ${element.items
+          .map(
+            (option, i) => `
+                      <li>
+                          <label class='option_set_values'>
+                              <input data-qty-min="${element.min_quantity}" type="${inputType}" data-qty="${element.quantity}" data-weight="${option.weight_value},${option.weight_unit}" class="option_set_validation" name="${element.name}" data-id="${option.id}" value="${option.name},${option.price}">
+                              ${option.image && option.image != "https://static.tossdown.com/images/"
+                ? '<figure class="w-100"><img class="w-100 h-100 object-fit-contain" src="' + option.image + '" /></figure>'
+                : ""}
+                              <small>${option.name}</small>
+                              <span>${option.price && option.price != 0 && option.price != 0.0 && option.price != "0" && option.price != "0.00" ? currencyCode+' '+formate_price(Number(option.price)) : ""}</span>
+                          </label>
+                      </li>
+                  `
+          )
+          .join("")}
+              </ul>
+              ${innerOptionCount > 0
+          ? `
+                        <div class='inner_options_container d-flex flex-column inner_option_parent' id="innerOptionsContainer_${outerOptionsetId}">
+                            <div class="inner_optionset_listing d-flex" id="inner_option_input"></div>
+                        </div>
+                    `
+          : ""
+        }
+          </div>
+      </div>`
+      }`;
+  } else {
+    // Generate the HTML for the accordion element without options
+    const isOptional = element.quantity === 0 ? "Optional" : "Required";
+    return `
+          <div class="single_optionset d-flex flex-column">
+              <h2 class="optionset_header" id="optionsetheading${index}">
+                  <button class="optionset_header_btn accordion-button d-flex align-items-center justify-content-between"
+                      type="button" data-bs-toggle="collapse" data-bs-target="#optionsetCollapse${index}"
+                      aria-expanded="false" aria-controls="optionsetCollapse${index}">
+                      <div class="optionset_header_data">
+                          <span>${element.name}</span>
+                          <small>(${isOptional})</small>
+                      </div>
+                      <i class="fas fa-chevron-down ms-auto"></i>
+                  </button>
+              </h2>
+              <div id="optionsetCollapse${index}" class="accordion-collapse collapse show"
+                  aria-labelledby="optionsetheading${index}" data-bs-parent="#optionsetAccordion">
+                  <p>No options available</p>
+              </div>
+          </div>`;
+  }
+}
+
+$("#product_detail").on("hidden.bs.modal", function (e) {
+  $('.show_selected_filters').html('');
+  $("#pop_up_images").attr("src", "");
+  $("#product_name").text("");
+  $("#price_pop_up").text("");
+  $("#desc_sec,#desktop_product_desc").text("");
+  $(".popup_qty").text(1);
+  $("#accordionFlush").empty();
+  $("input[type='checkbox']").prop("checked", false);
+  $("input[type='radio']").prop("checked", false);
+  $(".lable_validation").empty();
+  // $(".price_btn").text("");
+  productJsonSet();
+});
+
+function UiResetTweaks(){
+  $("input[type='checkbox']").prop("checked", false);
+  $("input[type='radio']").prop("checked", false);
+  $(".option_set_validation").attr('data-qty-current', 0);
+  $('.option_set_values').removeClass('selected');
+  $(".price_btn").text("");
+  $(".popup_curreny").text("");
+  $(".btn_popup_curreny").text("");
+  $(".counter-input").text("0");
+  $(".box-optionset").html("");
+  $(".detail-page-qty").html("1");
+  $("#specail-note").html("");
+  $("#product_detail").find('.product_popup_description').scrollTop(0);
+  $(".comment").val("")
+  var finalPriceInput = $('#finalDetailPagePrice');
+  if (finalPriceInput.length > 0 && finalPriceInput.val() != "") {
+    finalPrice = finalPriceInput.val().toLocaleString();
+      var currency = finalPriceInput.attr('data-currency') || '';
+      if (finalPrice > 0) { 
+        $('.detail_prices').text(currency + ' ' + formate_price(Number(finalPrice)));
+      }else{
+        $('.detail_prices').text('');
+      }
+  }
+  var smallValidation = $('.small_validation');
+  if (smallValidation.length > 0) {
+     smallValidation.removeClass('text-danger text-success');
+  }
+}
+
+$(document).on(
+  "change",
+  ".option_set_validation",
+  function () {
+    const optionSetName = $(this).attr("name");
+    const optionSetId = $(this).attr("data-id");
+    const optionSet = $(`.option_set_validation[name='${optionSetName}']`);
+    const innerOptionSet = $(`.inner_option_set[name='${optionSetName}']`);
+    if ($(this).hasClass("detail-page-options")) {
+      let productDomedeatil = $(".product_detail").val(); 
+      productJson =  decryptJson(productDomedeatil);
+    }
+    $(".inner_options_container .accordion-collapse").removeClass("show");
+
+    if ($(this).attr("type") == "radio") {
+      optionSet.closest(".option_set_values").removeClass("selected");
+      innerOptionSet.closest(".option_set_values").removeClass("selected");
+      optionSet.attr("data-qty-current", "0");
+      innerOptionSet.attr("data-qty-current", "0");
+      $(this).attr("data-qty-current", "1");      
+      $(this).closest(".option_set_values").addClass("selected");
+    } else if ($(this).attr("type") == "checkbox") {
+      $(this).closest(".option_set_values").toggleClass("selected");
+      if ($(this).prop("checked")) {
+        $(this).attr("data-qty-current", "1");
+      } else {
+        $(this).attr("data-qty-current", "0");
+      }
+    }
+    
+    if (optionSetId) {
+      let outerOptionSet = null;
+      // Find the matching outer option set if it exists
+
+      for (let i = 0; i < productJson.options.length; i++) {
+        const element = productJson.options[i];
+
+        outerOptionSet = element.items.find(
+          (outerOption) => outerOption && outerOption.id == optionSetId
+        );
+        if (outerOptionSet) {
+          break;
+        }
+      }
+      if (
+        outerOptionSet &&
+        outerOptionSet.items &&
+        outerOptionSet.items.length > 0
+      ) {
+        // Filter and display inner options
+        const innerOptionsAccordion = $(this)
+          .closest(".single_optionset")
+          .find("#inner_option_input");
+          innerOptionsAccordion.empty();
+
+        let isOptional = 0;
+
+        outerOptionSet.items.forEach((item) => {
+          if (item.min_quantity == 0 && item.quantity > 1) {
+            isOptional = "Required";
+          } else {
+            isOptional = item.min_quantity == 0 ? "Optional" : "Required";
+          }
+        });
+        if (
+          $(this)
+            .closest(".option_set_values")
+            .find(".option_set_validation")
+            .is(":checked")
+        ) {
+          const inner_optionset_samll_section = $(
+            `<div class='inner_optionset_validation_box'><small class='inner_optionset error_validation_${productJson.menu_item_id}' name="${outerOptionSet.name}  id="${outerOptionSet.id}">${isOptional}&nbsp </small><label name="${outerOptionSet.name}" id="${outerOptionSet.id}" class="inner_option_validation_message"></label></div>`
+          );
+          $(innerOptionsAccordion).append(inner_optionset_samll_section);
+          outerOptionSet.items[0].items.forEach((innerOption, index) => {
+            innerOptionsAccordion.append(
+              renderInnerOption(innerOption, index, outerOptionSet)
+            );
+          });
+        }
+      }else{
+        const innerOptionsAccordion = $(this)
+        .closest(".single_optionset")
+        .find("#inner_option_input");
+      innerOptionsAccordion.empty();
+      }
+    }
+    updateTotalPrice();
+    option_set_validation();
+    inner_option_set_validation();
+  }
+);
+
+$(document).on(
+  "change",
+  ".inner_option_set",
+  function () {
+    const optionSetName = $(this).attr("name");
+    const optionSetId = $(this).attr("data-id");
+    if ($(this).hasClass("detail-page-options")) {
+      let productDomedeatil = $(".product_detail").val(); 
+      productJson =  decryptJson(productDomedeatil);
+    }
+    $(".inner_options_container .accordion-collapse").removeClass("show");
+
+    if ($(this).attr("type") == "radio") {
+      // Remove the 'selected' class from all other radio buttons with the same name
+      $(`.option_set_validation[name='${optionSetName}']`)
+        .closest(".option_set_values")
+        .removeClass("selected");
+      $(`.inner_option_set[name='${optionSetName}']`)
+        .closest(".option_set_values")
+        .removeClass("selected");
+      // Add the 'selected' class to the current radio button
+      $(this).closest(".option_set_values").addClass("selected");
+    } else if ($(this).attr("type") == "checkbox") {
+      $(this).closest(".option_set_values").toggleClass("selected");
+    }
+    
+    if (optionSetId) {
+      let outerOptionSet = null;
+      // Find the matching outer option set if it exists
+
+      for (let i = 0; i < productJson.options.length; i++) {
+        const element = productJson.options[i];
+
+        outerOptionSet = element.items.find(
+          (outerOption) => outerOption && outerOption.id == optionSetId
+        );
+        if (outerOptionSet) {
+          break;
+        }
+      }
+      if (
+        outerOptionSet &&
+        outerOptionSet.items &&
+        outerOptionSet.items.length > 0
+      ) {
+        // Filter and display inner options
+        const innerOptionsAccordion = $(this)
+          .closest(".single_optionset")
+          .find("#inner_option_input");
+          innerOptionsAccordion.empty();
+
+        let isOptional = 0;
+
+        outerOptionSet.items.forEach((item) => {
+          if (item.min_quantity == 0 && item.quantity > 1) {
+            isOptional = "Required";
+          } else {
+            isOptional = item.min_quantity == 0 ? "Optional" : "Required";
+          }
+        });
+        if (
+          $(this)
+            .closest(".option_set_values")
+            .find(".option_set_validation")
+            .is(":checked")
+        ) {
+          const inner_optionset_samll_section = $(
+            `<div class='inner_optionset_validation_box'><small class='inner_optionset error_validation_${productJson.menu_item_id}' name="${outerOptionSet.name}  id="${outerOptionSet.id}">${isOptional}&nbsp </small><label name="${outerOptionSet.name}" id="${outerOptionSet.id}" class="inner_option_validation_message"></label></div>`
+          );
+          $(innerOptionsAccordion).append(inner_optionset_samll_section);
+          outerOptionSet.items[0].items.forEach((innerOption, index) => {
+            innerOptionsAccordion.append(
+              renderInnerOption(innerOption, index, outerOptionSet)
+            );
+          });
+        }
+      }else{
+      }
+    }
+    updateTotalPrice();
+    option_set_validation();
+    inner_option_set_validation();
+  }
+);
+
+function option_set_validation() {
+  let isValid = true;
+    productJson.options.forEach((element) => {
+      const optionSetName = element.name;
+      const minQty = element.min_quantity;
+      const maxQty = element.quantity;
+      const selectedOptions = $("input[name='" + optionSetName + "']:checked");
+      const errorMessageContainer = $(
+        ".lable_validation[name='" + optionSetName + "']"
+      );
+      const requiredLabel = $(".small_validation[name='" + optionSetName + "']");
+
+      // Check if both minQty and maxQty are 0, indicating optional
+      if (minQty == 0 && maxQty == 0) {
+        // Clear error messages and mark fields as valid
+        errorMessageContainer.html("");
+        requiredLabel.removeClass("text-danger").addClass("text-success");
+      } else if (minQty == 0 && maxQty > 1) {
+        let totalQuantity = 0;
+        selectedOptions.each(function () {
+          totalQuantity += parseInt($(this).attr("data-qty-current"));
+        });
+
+        if (totalQuantity < minQty || totalQuantity >= maxQty) {
+          errorMessageContainer.html("");
+          requiredLabel.removeClass("text-danger").addClass("text-success");
+        } else {
+          errorMessageContainer.html(
+            `  -  Select upto  ${maxQty} option(s)`
+          );
+          errorMessageContainer.removeClass("text-success").addClass("text-danger");
+          requiredLabel.removeClass("text-success").addClass("text-danger");
+          isValid = false;
+        }
+      } else {
+        // Perform validation for non-optional option sets
+        if (selectedOptions.length < minQty || selectedOptions.length > maxQty) {
+          errorMessageContainer.html(
+            `  -  Select upto  ${maxQty} option(s)`
+          );
+          errorMessageContainer.removeClass("text-success").addClass("text-danger");
+          requiredLabel.removeClass("text-success").addClass("text-danger");
+          isValid = false;
+        } else {
+          errorMessageContainer.html("");
+          requiredLabel.removeClass("text-danger").addClass("text-success");
+        }
+      }
+    });
+    return isValid;
+}
+
+function scrollToError(menu_item_id) {
+  var errorMessageContainer = $(".error_validation_" + menu_item_id + ".text-danger");
+  navigator.vibrate(200);
+  if (errorMessageContainer.length) { // Ensure the element exists
+    errorMessageContainer[0].scrollIntoView({
+      behavior: 'smooth', // Smooth scrolling
+      block: 'center',    // Center the element in the view if possible
+      inline: 'nearest'
+    });
+  }
+}
+
+function updateTotalPrice() {
+  let itemPrice = 0;
+  if (productJson.discount_value && productJson.discount_value != "" && productJson.discount_value != "0"  ) {
+     itemPrice = parseFloat(productJson.price) - parseFloat(productJson.discount_value);
+  } else{
+    itemPrice = parseFloat(productJson.price);
+  }
+  $(".option_set_validation:checked").each(function () {
+    const optionSetPrice = $(this).val().split(",");
+    var currentQty = 0;
+    var itemQuantityPrice = 0;
+    if ($(this).siblings('.qty_increased').length !== 0) {
+      currentQty = parseInt($(this).attr('data-qty-current') , 0);
+      itemQuantityPrice =   parseFloat(optionSetPrice[1]) * currentQty;
+      itemPrice += itemQuantityPrice;
+    }else{
+      itemPrice += parseFloat(optionSetPrice[1]);
+    }
+  });
+  $(".inner_option_set:checked").each(function () {
+    const innerOptionPrice = $(this).val().split(",");
+    itemPrice += parseFloat(innerOptionPrice[1]);
+  });
+  $("a.plus_item_qty .btn_popup_curreny").removeClass("hide");
+  if ($(".total_qty").length > 0) {
+    let menuItemId = productJson.menu_item_id;
+    let totalQty = $("#"+menuItemId+"_qty").text(); 
+    if (totalQty > 0) {
+      itemPrice = itemPrice * totalQty;
+    }
+  }
+  $(".price_btn").html(formate_price(Number(itemPrice)));
+  if($('.product_detail_prices').length > 0 && productJson && productJson.currency){
+    $(".detail_prices").text(getCurrencySymbolJs(productJson.currency) +' '+formate_price(Number(itemPrice)));
+  }
+}
+
+function renderInnerOption(innerOption, index, outerOptionSet) {
+  const minQuantity = outerOptionSet.items[0].min_quantity;
+  const maxQuantity = outerOptionSet.items[0].quantity;
+  let currencyCode = localStorage.getItem('currencyCode');
+  let inputType = "checkbox";
+  if (minQuantity == 0 && maxQuantity > 1) {
+    inputType = "number";
+  } else if (minQuantity == 1 && maxQuantity > 1) {
+    inputType = "checkbox";
+  } else if (minQuantity == 1 && maxQuantity == 1) {
+    inputType = "radio";
+  }
+
+  return `
+          ${inputType === "number"
+      ? `<div class="single_inner_option">  
+              <div class='option_set_values d-flex flex-column'>
+              <div class='option_set_section'>
+                      <span>${innerOption.name}</span>    
+                      <span>${innerOption.price &&
+        innerOption.price != 0 &&
+        innerOption.price != 0.0
+        ? currencyCode + " " +formate_price(Number(innerOption.price))
+        : " "
+      }</span>
+                  </div>
+              <div class="counter inner_optionset_parent product_cart_btn">
+                          <a class="counter-btn minus qty_increased">-</a>
+                          <input data-qty-min=${minQuantity} type='checkbox' data-qty='${maxQuantity}' class='inner_option_set inner_options_value' name="${outerOptionSet.name}" data-id=${innerOption.id} value='${innerOption.name},${innerOption.price}' data-qty-current="0">
+                          <span class='counter-input'>0</span>
+                          <a class="counter-btn plus qty_increased">+</a>
+                      </div>
+                  <label class="inner_option_validation" id="innerOptionValidation_${innerOption.id
+      }"></label> <!-- Unique error message label for inner option set -->
+              </div>
+             </div>`
+      : `<div class="single_inner_option">  
+              <label class='option_set_values d-flex flex-column'><input data-qty-min=${minQuantity} data-qty='${maxQuantity}' class='inner_option_set' name="${outerOptionSet.name}" data-id=${innerOption.id} type='${inputType}' value='${innerOption.name},${innerOption.price}'><div class='option_set_section'>
+              <span>${innerOption.name}</span>    
+              <span>${innerOption.price &&
+        innerOption.price != 0 &&
+        innerOption.price != 0.0
+        ? currencyCode + " " +formate_price(Number(innerOption.price))
+        : " "
+      }</span>
+          </div>
+          <label class="inner_option_validation" id="innerOptionValidation_${innerOption.id
+      }"></label> <!-- Unique error message label for inner option set -->
+      </label>
+     </div>`
+    }
+           
+  `;
+}
+
+function inner_option_set_validation() {
+  let isValid = true;
+
+  $(".inner_option_set").each(function () {
+    const optionSetName = $(this).attr("name");
+    const minQuantity = parseInt($(this).attr("data-qty-min"));
+    const maxQuantity = parseInt($(this).attr("data-qty"));
+    const selectedOptions = $(this)
+      .closest(".inner_options_container")
+      .find(".inner_option_set:checked");
+    const errorMessageContainer = $(this)
+      .closest(".inner_options_container")
+      .find(".inner_option_validation_message");
+    const optionalRequired = $(this)
+      .closest(".inner_options_container")
+      .find(".inner_optionset");
+    // Check if both minQuantity and maxQuantity are 0, indicating optional
+    if (minQuantity == 0 && maxQuantity == 0) {
+      // Clear error messages and mark fields as valid
+      errorMessageContainer.html("");
+      optionalRequired.removeClass("text-danger").addClass("text-success");
+    } else if (minQuantity == 0 && maxQuantity > 1) {
+      let totalQuantity = 0;
+      selectedOptions.each(function () {
+        totalQuantity += parseInt($(this).attr("data-qty-current"));
+      });
+      const errorMessage = totalQuantity < maxQuantity ? ` - Select up to ${maxQuantity} option(s)` : "";
+      const isValidOptionSet = errorMessage === "";
+      if (totalQuantity < minQuantity || totalQuantity >= maxQuantity) {
+        errorMessageContainer.html("");
+        optionalRequired.removeClass("text-danger").addClass("text-success");
+      } else {
+        errorMessageContainer.html(errorMessage);
+        optionalRequired.toggleClass("text-success", isValidOptionSet);
+        optionalRequired.toggleClass("text-danger", !isValidOptionSet);
+        errorMessageContainer.toggleClass("text-success", isValidOptionSet);
+        errorMessageContainer.toggleClass("text-danger", !isValidOptionSet);
+        isValid = isValid && isValidOptionSet;
+      }
+    }
+    else {
+      // Perform validation for non-optional inner option sets
+      const errorMessage =
+        selectedOptions.length < minQuantity
+          ? ` - Select up to ${minQuantity} option(s)`
+          : selectedOptions.length > maxQuantity
+            ? ` - Select up to ${maxQuantity} option(s)`
+            : "";
+
+      const isValidOptionSet = errorMessage === "";
+
+      errorMessageContainer.html(errorMessage);
+      optionalRequired.toggleClass("text-success", isValidOptionSet);
+      optionalRequired.toggleClass("text-danger", !isValidOptionSet);
+      errorMessageContainer.toggleClass("text-success", isValidOptionSet);
+      errorMessageContainer.toggleClass("text-danger", !isValidOptionSet);
+
+      // Remove the "selected" class from all options in the current set
+      $(this)
+        .closest(".inner_options_container")
+        .find(".inner_option_set")
+        .removeClass("selected");
+
+      // Add the "selected" class to the checked options
+      selectedOptions.addClass("selected");
+
+      isValid = isValid && isValidOptionSet;
+    }
+  });
+
+  return isValid;
+}
+
+$(document).on("click", ".plus_item_qty", function () {
+  let totalQtyElement = $(this).siblings(
+    "#" + productJson.menu_item_id + "_qty"
+  );
+  let totalQty = parseInt(totalQtyElement.text());
+  if (!checkOrderLimit(productJson, this)) return;
+
+  if (!isNaN(totalQty)) {
+    totalQty++;
+    totalQtyElement.text(totalQty);
+    updateTotalPrice();
+  }
+  if (
+    $(this).siblings(".minus_item_qty").hasClass("disabled") &&
+    totalQty > 1
+  ) {
+    $(this).siblings(".minus_item_qty").removeClass("disabled");
+    $(this).siblings(".minus_item_qty").prop("disabled", false);
+  }
+});
+
+$(document).on("click", ".minus_item_qty", function () {
+  let totalQtyElement = $(this).siblings(
+    "#" + productJson.menu_item_id + "_qty"
+  );
+  let totalQty = parseInt(totalQtyElement.text());
+
+  // Optional: Check if the parsed value is NaN or undefined before decrementing
+  if (!isNaN(totalQty)) {
+    totalQty--;
+    totalQtyElement.text(totalQty);
+    updateTotalPrice();
+    // Disable the button if the totalQty is now 1
+    if (totalQty == 1) {
+      $(this).addClass("disabled");
+      $(this).prop("disabled", true);
+    } else {
+      $(this).removeClass("disabled");
+      $(this).prop("disabled", false);
+    }
+  }
+
+  let addButton = $(this).siblings(".plus_item_qty");
+  if (addButton.prop("disabled")) {
+    addButton.prop("disabled", false);
+  }
+});
+
+function objectsAreEqual(obj1, obj2) {
+  return JSON.stringify(obj1) === JSON.stringify(obj2);
+}
+
+$(document).on("click", ".popup_item_add_btn, .detail_add_cart_btn", async function () {
+  if (
+    
+    getCookie("order_type") &&
+    getCookie("order_type") != "" &&
+    getCookie("branch_id") &&
+    getCookie("branch_id") != ""
+  ) {
+  if ($(this).hasClass("detail-page-add-btn")) {
+    let productDomedeatil = $(".product_detail").val();
+     productJson =  decryptJson(productDomedeatil);
+  }
+  let cart_inc = true;
+  let qty_inceased = true;
+  setTimeout(() => {
+    $(this).removeClass("button_animation");
+  }, 100);
+   let  totalQty = parseFloat($("#" + productJson.menu_item_id + "_qty").text());
+  if (option_set_validation() && inner_option_set_validation()) {
+    addToCart(productJson);
+
+    if (!checkOrderLimit(productJson, this)) return;
+    let special_instruction = $("#special-" + productJson.menu_item_id).length 
+    ? $("#special-" + productJson.menu_item_id).val() 
+    : "";
+    $(this).addClass('Not_allowed')
+    $(this).addClass("button_animation");
+    $(this).find('.cartBtn').addClass('hide');  
+    $(this).find(".loader_popup").removeClass("hide");
+    $(this).addClass("disabled");
+    $("#product_detail").addClass("Not_allowed");
+    $(".add_to_cart_loader").removeClass("hide");
+    const selectedItem = {
+      id: productJson.menu_item_id,
+      image: productJson.image,
+      name: productJson.name,
+      desc: productJson.desc,
+      price: productJson.price,
+      slug: productJson.slug,
+      qty: totalQty,
+      discount: productJson.discount ? productJson.discount : 0,
+      item_level_discount_value: productJson.discount_value ? productJson.discount_value : 0,
+      globalDiscountPer: productJson.json,
+      tax: productJson.tax.trim() ? productJson.tax.trim() : "",
+      item_level_tax_value: productJson.tax.trim() ? productJson.price * productJson.tax / 100 : 0,
+      calculated_weight: productJson.calculated_weight ? productJson.calculated_weight : 0,
+      weight_value: productJson.weight_value ? productJson.weight_value : '',
+      weight_unit: productJson.weight_unit ? productJson.weight_unit : "kg",
+      category_id: productJson.menu_cat_id,
+      brand_id: brand_id,
+      product_code: "0",
+      item_index: 0,
+      comment: special_instruction,
+      category_name: productJson.category,
+      options: {}, // You'll need to add the code to populate this property based on your logic
+    };
+    let optionset_array = [];
+    $(".option_set_values").each(function () {
+      const optionSetQty = $(this).find(".option_set_validation:checked").attr("data-qty-current");
+      const optionSetName = $(this)
+        .find(".option_set_validation:checked")
+        .attr("name");
+      const optionSetValue = $(this)
+        .find(".option_set_validation:checked")
+        .val();
+
+      const optionSetWeight = $(this)
+        .find(".option_set_validation:checked")
+        .attr("data-weight");
+      if (
+        optionSetValue !== null &&
+        optionSetValue !== undefined &&
+        typeof optionSetValue === "string"
+      ) {
+        optionset_array.push(optionSetValue.split(",")[0]);
+      }
+
+      if (optionSetName && optionSetValue) {
+        // Initialize the outer option set if it doesn't exist
+        if (!selectedItem.options.hasOwnProperty(optionSetName)) {
+          selectedItem.options[optionSetName] = [];
+        }
+
+        // Create a new option object for the outer option set       
+        let outerOption = {
+          name: optionSetValue.split(",")[0],
+          price: optionSetValue.split(",")[1], // Assuming format "name,price"
+          weight_value: optionSetWeight.split(",")[0]?.trim() || "",
+          weight_unit: optionSetWeight.split(",")[1]?.trim() || "",
+          quantity: optionSetQty && optionSetQty != "" ? optionSetQty : "1",
+        };
+        selectedItem.options[optionSetName].push(outerOption);
+
+        // Find the inner options container for the current outer option set
+        const innerOptionsContainer = $(this)
+          .closest(".accordion-collapse")
+          .find(".inner_options_container");
+          outerOption.inner_options = {};
+          // Iterate over each selected inner option set
+          innerOptionsContainer.find(".inner_option_set:checked").each(function (index, element) {
+            const inneroptionSetQty = $(this).attr("data-qty-current");
+            const innerOptionSetName = $(this).attr("name");
+            const innerOptionSetValue = $(this).val();
+            optionset_array.push(innerOptionSetValue.split(",")[0]);
+          
+            const innerOption = {
+              name: innerOptionSetValue.split(",")[0],
+              price: innerOptionSetValue.split(",")[1],
+              quantity: inneroptionSetQty && inneroptionSetQty != "" ? inneroptionSetQty : "1",
+            }; 
+            // Initialize the array if it doesn't exist
+            if (!outerOption.inner_options[innerOptionSetName]) {
+              outerOption.inner_options[innerOptionSetName] = [];
+            }
+               // Use push to add to the array
+            outerOption.inner_options[innerOptionSetName].push(innerOption);
+          });
+      } 
+    });
+    optionset_array.sort();
+    // Construct a unique key for the item based on its menu_item_id and options
+    let selectedItemKey = "menu_item_id_" + productJson.menu_item_id;
+    let string = optionset_array.map((item) => item.replace(" ", "")).join(",");
+    let finalString = string ? "_" + string : "";
+    selectedItemKey = selectedItemKey + finalString;
+    // Check if an item with the same key already exists in the cart
+
+    let newJsonString = JSON.stringify(selectedItem);
+    let status = await update_cart(newJsonString, cart_inc, qty_inceased);
+    let success = status.result.status;
+    if (success == "200" || success == 200) {
+      UiResetTweaks();   
+    }
+    $(this).find('.cartBtn').removeClass('hide');
+    $(this).find(".loader_popup").addClass("hide");
+    $(this).removeClass("disabled");
+    $(this).removeClass("Not_allowed")
+    updateTotalQuantityDisplay();
+    // Close the modal here after adding to the cart
+    if($(this).hasClass("detail-page-add-btn")){
+      $("#product_detail").removeClass("Not_allowed")
+    }else{
+      $("#product_detail").modal("hide");
+      $("#product_detail").removeClass("Not_allowed")
+    }
+  } else {
+    var menu_item_id = productJson.menu_item_id;
+    scrollToError(menu_item_id)
+    updateTotalQuantityDisplay();
+  }
+
+  $(".add_to_cart_loader").addClass("hide");
+}else{
+  $("#currentLoc").modal("toggle");
+}
+});
+
+$(document).on("click", ".add_to_cart", async function (e) {
+  e.preventDefault();
+  if (
+    getCookie("order_type") &&
+    getCookie("order_type") != "" &&
+    getCookie("branch_id") &&
+    getCookie("branch_id") != ""
+  ) {
+    $(".add_to_cart_loader").removeClass("hide");
+    if($(this).hasClass("check-lable-applied-or-not")){
+      $(this).html("<div class='spinner-border loader_popup' role='status'> <span class='sr-only'>Loading...</span></div>");
+    }
+
+    if(!$(this).hasClass("check-lable-applied-or-not")){
+      $(this).addClass("button_animation");
+    }
+   
+    let totalQty = 0;
+    let cart_inc = true;
+    let hiddenDom = $(this)
+      .closest(".product_cart_btn")
+      .siblings(".hidden_field")
+      .val();
+    let productJson = decryptJson(hiddenDom)
+    let menuItemId = productJson.menu_item_id;
+      let cartBtn = $(".cart_button_"+menuItemId);
+    addToCart(productJson);
+    let qty = $(this).siblings(".total_qty_product");
+    totalQty = parseFloat(qty.text()) + 1;
+    $(".add_to_cart").addClass("Not_allowed");
+    $(".reduce_qty").addClass("Not_allowed");
+    
+    if(!$(this).hasClass("check-lable-applied-or-not")){
+    setTimeout(() => {
+      $(this).removeClass("button_animation");
+    }, 100);
+  }
+    // Construct a new cart item using properties from the product JSON
+    let cartItem = {
+      id: productJson.menu_item_id,
+      image: productJson.image,
+      name: productJson.name,
+      price: productJson.price,
+      slug: productJson.slug,
+      qty: totalQty,
+      discount: productJson.discount ? productJson.discount : 0,
+      item_level_discount_value: productJson.discount_value ? productJson.discount_value : 0,
+      globalDiscountPer: productJson.json,
+      tax: productJson.tax.trim() ? productJson.tax.trim() : "",
+      item_level_tax_value: productJson.tax.trim() ? productJson.price * productJson.tax / 100 : 0,
+      weight_value: productJson.weight_value.trim() ? productJson.weight_value.trim(): "",
+      weight_unit: productJson.weight_unit.trim()
+        ? productJson.weight_unit.trim()
+        : "kg",
+      comment: productJson.note ? productJson.note : "",
+      calculated_weight: productJson.calculated_weight ? productJson.calculated_weight : 0,
+      category_id: productJson.menu_cat_id ? productJson.menu_cat_id : "",
+      brand_id: brand_id,
+      product_code: productJson.product_code ? productJson.product_code : "0",
+      category_name: productJson.category ? productJson.category : "",
+      options: {}, // You'll need to add the code to populate this property based on your logic
+    };
+    let newJsonString = JSON.stringify(cartItem);
+    let status = await update_cart(newJsonString, cart_inc);
+    let success = status.result.status;
+    if (success == "200" || success == 200) {
+      cartBtn.siblings(".total_qty_product").text(totalQty);
+      if (totalQty > 0) {
+        cartBtn.addClass("qty_increased");
+        cartBtn.siblings(".reduce_qty").addClass("qty_increased");
+        cartBtn.siblings().removeClass("hide");
+      }
+      updateTotalQuantityDisplay();
+    }
+   $(".cart_button_"+menuItemId).html(`<i class='fas fa-plus'></i>`)
+    $(".reduce_qty").removeClass("Not_allowed");
+    $(".add_to_cart").removeClass("Not_allowed");
+    $(".add_to_cart_loader").addClass("hide");
+  } else {
+    $("#currentLoc").modal("toggle");
+  }
+});
+
+// update qty function for sidebar button
+function updateTotalQuantityDisplay() {
+  let cartData = JSON.parse(localStorage.getItem("cart")) || [];
+  let totalQuantity = calculateTotalQuantity(cartData);
+  if (isNaN(totalQuantity) || totalQuantity < 0) {
+    totalQuantity = 0;
+  }
+  $(".total_quantity_display").text(totalQuantity);
+  let total_qty_sidebar = $(".total_quantity_display").text();
+  if (total_qty_sidebar > 0) {
+    $(".header_cart_icon").addClass("qty_increased");
+  } else {
+    $(".header_cart_icon").removeClass("qty_increased");
+  }
+  var expire = getCookieTime();
+  document.cookie = `total_qty=${totalQuantity}; path=/; ${expire}`;
+}
+
+function calculateTotalQuantity(cartData) { 
+  let totalQuantity = 0;
+  let data = [];
+  data = cartData.items;
+  if (data) {
+    data.forEach(element => {
+
+      totalQuantity += parseInt(element.dqty);
+    });
+  }
+
+  return totalQuantity;
+  }
+
+
+
+// update qty function for sidebar button end
+function removeTags(html) {
+  return html.replace(/<[^>]*>/g, "");
+}
+
+function render_cart() {
+  let cartData = JSON.parse(localStorage.getItem("cart")) || {};
+  let image_array = {};
+  let product_desc_array = {};
+
+  // for (const key in cartitems) {
+  //   if (cartitems.hasOwnProperty(key)) {
+  //     const item = cartitems[key];
+  //     const image =
+  //       item.image ||
+  //       "https://static.tossdown.com/images/92614583-90a4-4ef4-849f-becfa9f5423a.webp";
+  //     // const desc = (item.desc) ? '<p>'+removeTags(item.desc)+'</p>' : '' || '';
+  //     // // Assuming 'id' is the key to identify items
+  //     // const itemId = item.id;
+
+  //     // // Add the image URL to the image_array with the item ID a
+  //     // image_array[itemId] = image;
+  //     // product_desc_array[itemId] = desc;
+  //   }
+  // }
+  let cart = cartData.items;
+  let allItemsInCart = [];
+  let totalDiscountGlobal = cartData.total;
+  let dtotal =  cartData.total;
+  let discount_value = cartData.discount_value
+    if(cartData.discount_value != 0){
+      totalDiscountGlobal = cartData.total - cartData.discount_value ;
+      $("#dtotal").html(`<span>Subtotal</span> <span>${currency} ${formate_price(dtotal)} </span>`);
+      $("#discount_value").html(`<div class='extra-styling' class=''><span>Discount</span> <span>${currency} ${formate_price(discount_value)} </span></div>`);
+     }else{
+      $("#dtotal").html('');
+      $("#discount_value").html('');
+     }
+     $(".items_total").text(formate_price(totalDiscountGlobal));
+     $(".side-bar-item-total").text(formate_price(totalDiscountGlobal));
+     $(".sidebar_currency").text(currency);
+
+
+   cart.forEach((element, index) => {
+    let fulloptionHTML = "";
+    let optionset = element.option_set !== "{}" ? JSON.parse(element.option_set) : {};
+    let note = element.comment ?? '';
+
+    let noteRendered = false; // global flag
+
+    function renderOptions(category, items, note, isRoot = true) {
+      let html = '';
+
+      // Show note only once for the very first call
+      if (!noteRendered && isRoot && note && note.trim() !== '') {
+        html += `<ul><strong>Note</strong><li>${note}</li></ul>`;
+        noteRendered = true; // mark note as rendered
+      }
+      // Category heading
+      html += `<strong>${category}</strong><ul>`;
+
+      items.forEach((item) => {
+        html += `<li>${item.quantity}x ${item.name}`;
+
+        // Check if there are inner options
+        if (item.inner_options && Object.keys(item.inner_options).length > 0) {
+          html += "<ul>";
+          for (let innerCategory in item.inner_options) {
+            // Pass empty note & set isRoot=false so note won't repeat
+            html += renderOptions(innerCategory, item.inner_options[innerCategory], '', false);
+          }
+          html += "</ul>";
+        }
+
+        html += `</li>`;
+      });
+
+      html += `</ul>`;
+      return html;
+    }
+
+
+    // Loop through the optionset and build HTML
+    for (let category in optionset) {
+      if (optionset[category].length > 0) {
+        fulloptionHTML += renderOptions(category, optionset[category] ,note);
+      }
+    }
+  
+    let discountedPrice = element.item_level_discount_value * element.dqty;
+    var jsonData = JSON.stringify(element); // Similar to json_encode in PHP
+    var encodedData = btoa(encodeURIComponent(jsonData));
+  
+    let cartItemHTML = `
+      <div class="cart_navigation_single_item d-flex w-100">
+        <div class="cart_navigation_single_item_detail d-flex flex-column w-100">
+<div class='d-flex justify-content-between align-items-center w-100'>
+          <h3>${element.dname}</h3>
+           <div class="cart_del_btn d-flex align-items-center">
+                <a id="${element.menu_item_id}" class="d-flex align-items-center justify-content-center cursor-pointer delete_product" data-index="${index}">
+                  <i class="fas fa-trash"></i>
+                </a>
+              </div>
+              </div>
+          <div class="cart_qty_parent d-flex justify-content-between align-items-center w-100">
+            <div class="cart_qty_main d-flex align-items-center">
+              <input type="hidden" id="${element.menu_item_id}_product" value="${encodedData}">
+              <div class="cart_qty_plus_minu_btn d-flex align-items-center">
+                <a id="${element.menu_item_id}" data_id=${index} class="d-flex align-items-center justify-content-center cursor-pointer sidebar-cart minus ${element.dqty === 1 ? "disabled" : ""}" ${element.dqty === 1 ? "disabled" : ""} data-index="${index}">
+                  <i class="fa fa-minus"></i>
+                </a>
+                <span class="total_qty">${element.dqty}</span>
+                <a id="${element.menu_item_id}" data_id=${index} class="d-flex align-items-center justify-content-center cursor-pointer sidebar-cart addition" data-index="${index}">
+                  <i class="fa fa-plus"></i>
+                </a>
+              </div>
+            </div>
+            <div class="cart_navigation_item_price d-flex align-items-center">
+              ${
+                element.item_level_discount_value && element.item_level_discount_value != 0
+                  ? `<span class='sidebar-discount-price'>${currency} ${formate_price(element.dtotal)}</span>`
+                  : ""
+              }
+              <strong>
+                ${currency} ${
+                  element.item_level_discount_value && element.item_level_discount_value != 0
+                    ? formate_price(element.dtotal - discountedPrice)
+                    : formate_price(element.dtotal)
+                }          
+              </strong>
+            </div>
+          </div>
+          <!-- Toggle for Option Set Details -->
+
+        <div class="option_set_container">
+        ${fulloptionHTML ? `<button class="toggle-option-set-btn" data-index="${index}">
+          View details <i class="fas fa-chevron-down"></i>
+        </button>` : ""}
+        <div class="option_set_details " id="option-set-${index}" style="display: none;">
+          ${fulloptionHTML}
+        </div>
+      </div>
+
+        </div>
+      </div>
+    `;
+    allItemsInCart.push(cartItemHTML);
+  });
+
+  console.log("Total items to render:", allItemsInCart.length);
+  console.log("Cart container exists:", $("#cartItemsContainer").length > 0);
+
+  $("#cartItemsContainer").empty();
+  $("#cartItemsContainer").append(allItemsInCart);
+
+  console.log("Items appended to container");
+
+  // CRITICAL: Show the cart sidebar content after rendering items
+  var noItemExist = $(".no_item_exist");
+  var cartNavigationHeaderDetail = $(".cart_navigation_header_detail");
+  var cartnavigationcontent = $(".cart_navigation_content");
+
+  console.log("Showing cart sidebar...");
+  noItemExist.hide();
+  cartNavigationHeaderDetail.removeAttr("style");
+  cartnavigationcontent.show();
+
+  console.log("Cart rendered successfully with", cart.length, "items");
+
+}
+
+
+document.addEventListener('click', function (event) {
+  if (event.target.classList.contains('toggle-option-set-btn')) {
+    let index = event.target.getAttribute('data-index');
+    let optionSetDetails = document.getElementById(`option-set-${index}`);
+    if (optionSetDetails.style.display === 'none') {
+      optionSetDetails.style.display = 'block';
+      event.target.innerHTML = 'Hide details <i class="fas fa-chevron-up"></i>';
+    } else {
+      optionSetDetails.style.display = 'none';  
+      event.target.innerHTML = 'View details <i class="fas fa-chevron-down"></i>';
+    }
+  }
+});
+
+let cartData = JSON.parse(localStorage.getItem("cart")) || {};
+
+if (Object.keys(cartData).length > 0) {
+  render_cart();
+}
+
+// Function to handle reducing the quantity of items in the cart
+$(document).on("click", ".reduce_qty",async function (e) {
+  e.preventDefault();
+  $(".add_to_cart_loader").removeClass("hide");
+  if(!$(this).hasClass("check-lable-applied-or-not")){
+      $(this).addClass("button_animation");
+  }
+
+  let hiddenDom = $(this)
+    .closest(".product_cart_btn")
+    .siblings(".hidden_field")
+    .val();
+
+
+  if($(this).hasClass("check-lable-applied-or-not")){
+    $(this).html("<div class='spinner-border loader_popup' role='status'> <span class='sr-only'>Loading...</span></div>");
+  }
+
+  let  productJson = decryptJson(hiddenDom);  
+  let menuItemId = productJson.menu_item_id;
+  let cartBtn = $(".cart_button_reduce_"+menuItemId);
+  let response = "false";
+  let qty = $(this).siblings(".total_qty_product");
+  let totalQty = parseFloat(qty.text()) - 1;
+  let cartItem = {};
+
+  if(!$(this).hasClass("check-lable-applied-or-not")){
+  setTimeout(() => {
+    $(this).removeClass("button_animation");
+  }, 100);
+  }
+  $(".add_to_cart").addClass("Not_allowed");
+  $(".reduce_qty").addClass("Not_allowed");
+  if (totalQty <= 0) {
+    response = "delete";
+  }
+  cartItem = {
+    id: productJson.menu_item_id,
+    image: productJson.image,
+    name: productJson.name,
+    desc: productJson.desc,
+    price: productJson.price,
+    slug: productJson.slug,
+    qty: totalQty,
+    discount: productJson.discount_value ? productJson.discount_value : 0,
+    item_level_discount_value: productJson.discount_value ? productJson.discount_value : 0,
+    globalDiscountPer: productJson.json,
+    tax: productJson.tax.trim() ? productJson.tax.trim() : "0",
+    item_level_tax_value: productJson.price * productJson.tax / 100,
+    weight_value: productJson.weight_value.trim()
+      ? productJson.weight_value.trim()
+      : "0",
+    weight_unit: productJson.weight_unit.trim()
+      ? productJson.weight_unit.trim()
+      : "kg",
+    comment: productJson.note ? productJson.note : "",
+    category_id: productJson.menu_cat_id ? productJson.menu_cat_id : "",
+    brand_id: brand_id,
+    product_code: productJson.product_code ? productJson.product_code : "0",
+    category_name: productJson.category ? productJson.category : "",
+    options: {}, // You'll need to add the code to populate this property based on your logic
+  };
+
+  // Update quantity display
+
+  // Update cartData with the modified item
+  if (totalQty > 0) {
+    cartData[`menu_item_id_${menuItemId}`] = cartItem;
+  }
+
+  // Update localStorage with the modified cartData
+
+  // Update the total quantity display in the cart
+
+  // Send updated cart data to server
+  let newJsonString = JSON.stringify(cartItem);
+  let status = await update_cart(newJsonString, response);
+  let success = status.result.status;
+
+  if (success == 200 || success == "200") {
+    cartBtn.siblings(".total_qty_product").text(totalQty);
+    if (totalQty <= 0) {
+      cartBtn.removeClass("qty_increased");
+      cartBtn.siblings(".add_to_cart").removeClass("qty_increased");
+      cartBtn.addClass("hide");
+      cartBtn.siblings(".total_qty_product").addClass("hide");
+      cartBtn.siblings(".total_qty_product").text(0);
+      if(cartBtn.hasClass("check-lable-applied-or-not")){
+        $(".cart_button_" + menuItemId).text(cartBtn.data("lable"));
+      }
+    }
+  }
+     if($(this).hasClass("check-lable-applied-or-not")){
+        $(this).html( "<i class='fas fa-minus'></i>");
+ }
+  updateTotalQuantityDisplay();
+  $(".add_to_cart").removeClass("Not_allowed");
+  $(".reduce_qty").removeClass("Not_allowed");
+  $(".add_to_cart_loader").addClass("hide");
+});
+// Function to handle reducing the quantity of items in the cart end
+
+// delete items from side bar
+$(document).ready(function () {
+  $(document).on("click", ".delete_product", async function () {
+    $(this).addClass("button_animation");
+    $(".sidebar-cart").addClass("Not_allowed");
+    $(".delete_product").addClass("Not_allowed");
+    setTimeout(() => {
+      $(this).removeClass("button_animation");
+    }, 100);
+    let optionSets = [];
+    let cart = JSON.parse(localStorage.getItem("cart")) || {};
+    let menu_item_id = $(this).attr("id");
+    let item_index = $(this).attr("data-index");
+    let optionSetNames = [];
+    if (cart.items[item_index]) {
+      let optionSet = JSON.parse(cart.items[item_index].option_set);
+      for (const optionSetName in optionSet) {
+        if (optionSet.hasOwnProperty(optionSetName)) {
+          const options = optionSet[optionSetName];
+          for (const option of options) {
+            optionSetNames.push(option.name); // Append the option set name
+            if (Array.isArray(option.inner_options)) {
+              option.inner_options.forEach((innerOption) => {
+                optionSetNames.push(innerOption.name); // Append the inner option name
+              });
+            }
+          }
+        }
+      }
+    }
+    optionSetNames.sort();
+    let string = optionSetNames.map((item) => item.replace(" ", "")).join(",");
+    let finalString = string ? "_" + string : "";
+    let response = "delete";
+    let sidebar_item = true;
+    existing_item = "menu_item_id_" + menu_item_id + finalString;
+  
+      delete cartData[existing_item];
+
+      let cartItem = cart.items[item_index];
+      let newJsonString = JSON.stringify(cartItem);
+      let status = await update_cart(
+        newJsonString,
+        response,
+        (qty_increased = false),
+        sidebar_item
+      );
+      let success = status.result.status;
+      if (success == 200 || success == "200") {
+        let dome_item = $(".cart_button_"+menu_item_id).siblings(".total_qty_product");
+        dome_item.html("0");
+        dome_item.addClass("hide");
+        dome_item.siblings(".reduce_qty").addClass("hide");
+        dome_item.siblings(".add_to_cart").removeClass("qty_increased");
+        let increaseBtn = $(".cart_button_"+menu_item_id);
+        if(increaseBtn.length && increaseBtn.hasClass("check-lable-applied-or-not")){
+          increaseBtn.text(increaseBtn.data("lable"));
+        }
+    }
+    updateTotalQuantityDisplay();
+  });
+  $(document).on("click", ".sidebar-cart", function () {
+    updateQtySidebar(this);
+  });
+
+  async function updateQtySidebar(clickedElement) {
+    $(clickedElement).addClass("button_animation");
+    $(".sidebar-cart").addClass("Not_allowed");
+    $(".delete_product").addClass("Not_allowed");
+    setTimeout(() => {
+      $(clickedElement).removeClass("button_animation");
+    }, 100);
+    let productJsonId = $(clickedElement).attr("id");
+    let productJson = sidebarDecrypt($("#" + productJsonId + "_product").val());
+    let response = true;
+    let sidebar_item = true;
+    let menuItemId = productJson.menu_item_id;
+    let cartItem = [];
+    let currentQty = parseInt($(clickedElement).siblings(".total_qty").text());
+    let item_index = $(clickedElement).attr("data-index");
+    let cart = JSON.parse(localStorage.getItem("cart")) || {};
+    let optionSetNames = [];
+    addToCart(productJson , sidebar_item);
+    if (cart.items[item_index]) {
+      let optionSet = JSON.parse(cart.items[item_index].option_set);
+      for (const optionSetName in optionSet) {
+        if (optionSet.hasOwnProperty(optionSetName)) {
+          const options = optionSet[optionSetName];
+          for (const option of options) {
+            optionSetNames.push(option.name); // Append the option set name
+            if (Array.isArray(option.inner_options)) {
+              option.inner_options.forEach((innerOption) => {
+                optionSetNames.push(innerOption.name); // Append the inner option name
+              });
+            }
+          }
+        }
+      }
+    }
+    optionSetNames.sort();
+    let string = optionSetNames.map((item) => item.replace(" ", "")).join(",");
+    let finalString = string ? "_" + string : "";
+    if ($(clickedElement).hasClass("addition")) {
+      response = true;
+      currentQty += 1;
+      cartItem = cart.items[item_index];
+      if (!checkOrderLimit(productJson, clickedElement)) {
+        $(clickedElement).removeClass("Not_allowed")
+        $(".sidebar-cart").removeClass("Not_allowed");
+        $(".delete_product").removeClass("Not_allowed");
+          return;
+      };
+    } else {
+      response = "false";
+      currentQty -= 1;
+      if (currentQty == 1) {
+        $(clickedElement).addClass("disabled");
+      }
+      removeFromCartEvent(productJson, 1); 
+      cartItem = cart.items[item_index];
+    }
+
+    let newJsonString = JSON.stringify(cartItem);
+    let status = await update_cart(
+      newJsonString,
+      response,
+      (qty_inceased = false),
+      sidebar_item
+    );
+    let success = status.result.status;
+    if (success == 200 || success == "200") {
+      let dome_item = $(".cart_button_"+menuItemId).siblings(".total_qty_product");
+      dome_item.html(currentQty);
+    }
+    updateTotalQuantityDisplay();
+  }
+});
+// delete items from side bar end
+//update_Cart_function
+
+$(document).on("click", ".proceed_checkout", function (e) {
+  e.preventDefault();
+  const $minimumSpendText = $(".minimum_spend_text");
+  const $totalQuantityDisplay = $(".total_quantity_display");
+  const minimumQty = parseFloat($totalQuantityDisplay.text());
+  const isMinimumSpendFulfilled = !$minimumSpendText.hasClass("text-danger");
+
+  if (isMinimumSpendFulfilled && minimumQty > 0) {
+    window.location.href = "/checkout";
+  } else {
+    console.log("Minimum spend not fulfilled");
+  }
+});
+
+// maintain state
+function state_maintain() {
+  try {
+    // Handle cart data
+    let cartData = JSON.parse(localStorage.getItem("cart")) || [];
+
+    if (cartData && cartData.items && Array.isArray(cartData.items)) {
+      cartData.items.forEach(element => {
+        try {
+          let id = element.menu_item_id;
+          let qty = element.dqty;
+          let optionSet = JSON.parse(element.option_set || '{}');
+          let hasOptions = Object.keys(optionSet).length > 0;
+          let cartBtn = $(".cart_button_" + id);
+
+          if (!hasOptions) {
+            cartBtn.siblings(".total_qty_product").html(qty).removeClass("hide");
+            cartBtn.siblings(".total_qty_product")
+              .siblings(".reduce_qty, .add_to_cart")
+              .addClass("qty_increased");
+            cartBtn.siblings(".total_qty_product")
+              .siblings(".reduce_qty")
+              .removeClass("hide");
+
+            // Handle button text for items with custom labels
+            let increaseBtn = $(".cart_button_" + id);
+            if (increaseBtn.hasClass("check-lable-applied-or-not")) {
+              increaseBtn.html("<i class='fas fa-plus'></i>");
+            }
+          }
+        } catch (err) {
+          console.error("Error processing cart item:", err);
+        }
+      });
+    }
+
+    // Handle wishlist data
+    try {
+      let wishlistData = JSON.parse(localStorage.getItem("wishlist")) || [];
+      console.log( "After calling", wishlistData);
+
+      wishlistData.forEach(element => {
+        try {
+          let id = element.item_id;
+          let wishlistBtn = $(".wishlist-data-" + id);
+          wishlistBtn.html("<i class='fas fa-heart'></i>");
+          wishlistBtn.css("color", "red");
+        } catch (err) {
+          console.error("Error processing wishlist item:", err);
+        }
+      });
+    } catch (err) {
+      console.error("Error reading wishlist data:", err);
+    }
+  } catch (err) {
+    console.error("Error in state_maintain():", err);
+  }
+}
+
+
+$(document).ready(function () {
+  state_maintain();
+});
+
+setTimeout(() => {
+  render_logo();
+}, 500);
+
+function render_logo() {
+  let cookie_logo = getCookie("logo");
+  let header_logo = $(".header_logo img");
+
+  if (cookie_logo) {
+    header_logo.attr("src", cookie_logo);
+  }
+}
+
+$(document).ready(function () {
+  var children = $("#cartItemsContainer").children();
+  var noItemExist = $(".no_item_exist");
+  var cartNavigationHeaderDetail = $(".cart_navigation_header_detail");
+  var cartnavigationcontent = $(".cart_navigation_content");
+  if (children.length <= 0) {
+    noItemExist.show();
+    cartNavigationHeaderDetail.attr("style", "display:none !important");
+    cartnavigationcontent.hide();
+  } else {
+    noItemExist.hide();
+    cartNavigationHeaderDetail.removeAttr("style");
+    cartnavigationcontent.show();
+  }
+})
+
+$("#schedule_delivery").change(function () {
+  // if ((getCookie("branch_id")) && getCookie("branch_id") != "") {
+    if ($(this).val() == "Schedule_ahead") {
+      $(".Time_slots_parent").removeClass("hide")
+      $("#pickup_order").addClass("disabled")
+      const startDate = new Date();
+      const datesArray = [];
+      for (let i = 0; i < 7; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+        const formattedDate = currentDate.toISOString().split('T')[0];
+        datesArray.push(formattedDate);
+      }
+      let dropdown = $("#time_slots");
+      dropdown.html('');
+      emptyTimeSlots();
+      const timeSlotsDropdownOption = $("<option disabled selected hidden>Select Date </option>");
+      dropdown.append(timeSlotsDropdownOption);
+      datesArray.forEach(slot => {
+        dropdown.append($('<option>', { value: slot, text: slot }));
+      });
+    } else {
+      $(".Time_slots_parent").addClass("hide")
+      $("#pickup_order").removeClass("disabled")
+    }
+  // } else {
+  //   alert("please select branch first")
+  // }
+});
+
+function fetchPickupTimeSlots(date) {
+  // Get branch ID from the selected pickup branch dropdown
+  const pickupDropdown = document.getElementById('selectPickupBranch');
+  const bid = pickupDropdown ? pickupDropdown.value : getCookie("branch_id");
+
+  const apiUrl = `https://tossdown.com/api/pickup_hours_time_slots?bid=${bid}&date=${date}&type=pickup`;
+  return fetch(apiUrl)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      return response.json();
+    })
+    .catch(error => {
+      console.error('Error fetching pickup hours time slots:', error);
+    });
+}
+
+$("#time_slots").change(function () {
+  $(".pickup_time_loader").removeClass("hide");
+  $("#pickup_time_slots").addClass("hide");
+  $("#pickup_time_slots").html('')
+  const selectedDateAndTime = $(this).val();
+  const selectedDate = selectedDateAndTime.split(' ')[0];
+  fetchPickupTimeSlots(selectedDate)
+    .then(timeSlots => {
+      $("#pickup_time_slots").removeClass("hide");
+      const timeSlotsDropdown = $("#pickup_time_slots");
+      const timeSlotsDropdownOption = $("<option disabled selected hidden>Pickup Time</option>");
+      timeSlotsDropdown.append(timeSlotsDropdownOption);
+
+      if (timeSlots.slots && timeSlots.slots.length > 0) {
+        timeSlots.slots.forEach(slot => {
+          timeSlotsDropdown.append($('<option>', { value: slot, text: slot }));
+        });
+      } else {
+        emptyTimeSlots();
+      }
+
+      $(".pickup_time_loader").addClass("hide");
+      $("#pickup_time_slots").removeClass("hide");
+    });
+    var expire = getCookieTime();
+  document.cookie = `date=${selectedDateAndTime}; ${expire}`
+
+});
+
+$("#pickup_time_slots").change(function () {
+  const selectedTime = $(this).val();
+  var expire = getCookieTime();
+  document.cookie = `Time=${selectedTime};${expire}`
+  $("#pickup_order").removeClass("disabled")
+})
+
+$(document).on("click", '.counter-btn', function () {
+  const inputFields = $('input[name="' + $(this).siblings('input[type="checkbox"]').attr('name') + '"]');
+
+  let totalQuantity = 0;
+  inputFields.each(function () {
+    totalQuantity += parseInt($(this).attr("data-qty-current"));
+  });
+
+  const maxQuantity = parseInt($(this).siblings('input[type="checkbox"]').attr('data-qty'));
+
+  let currentValue = parseInt($(this).siblings('input[type="checkbox"]').attr("data-qty-current"));
+
+  const minQuantity = parseInt($(this).siblings('input[type="checkbox"]').attr('data-qty-min'));
+  if ($(this).hasClass('plus')) {
+    if (totalQuantity < maxQuantity) {
+      currentValue++;
+      $(this).siblings('.counter-input').text(currentValue);
+      $(this).siblings('input[type="checkbox"]').attr('data-qty-current', currentValue); // Update custom data attribute
+    }
+  } else if ($(this).hasClass('minus')) {
+    if (currentValue > minQuantity) {
+      currentValue--;
+      $(this).siblings('.counter-input').text(currentValue);
+      $(this).siblings('input[type="checkbox"]').attr('data-qty-current', currentValue); // Update custom data attribute
+    }
+  }
+  if (currentValue > 0) {
+    $(this).closest(".counter").closest(".option_set_values").addClass('selected');
+    $(this).siblings("input[type='checkbox']").prop("checked", true);
+  } else {
+    $(this).closest(".counter").closest(".option_set_values").removeClass('selected');
+    $(this).siblings("input[type='checkbox']").prop("checked", false);
+  }
+  option_set_validation()
+  inner_option_set_validation();
+  updateTotalPrice();
+});
+
+function productJsonSet(){
+  if ($(".product_detail").length > 0 && $(".product_detail").val() !== "") {
+    let productDomedeatil = $(".product_detail").val(); 
+    try {
+        productJson = decryptJson(productDomedeatil);
+
+      } catch (e) {
+        console.error("Failed to parse product detail JSON:", e);
+      }
+  }
+}
+
+function decryptJson(encodedData) {
+  try {
+    // Check if encodedData is valid
+    if (!encodedData || encodedData === '' || encodedData === 'undefined') {
+      console.warn('decryptJson: Invalid or empty encoded data');
+      return null;
+    }
+
+    const decodedData = atob(encodedData);
+    return JSON.parse(decodedData);
+  } catch (error) {
+    console.error('decryptJson: Failed to decode data', error);
+    return null;
+  }
+}
+
+function sidebarDecrypt(encodedData) {
+  try {
+    // Check if encodedData is valid
+    if (!encodedData || encodedData === '' || encodedData === 'undefined') {
+      console.warn('sidebarDecrypt: Invalid or empty encoded data');
+      return null;
+    }
+
+    // Decode: Base64(URL-encoded JSON) -> URL-encoded JSON -> JSON
+    const decodedData = decodeURIComponent(atob(encodedData));
+    return JSON.parse(decodedData);
+  } catch (error) {
+    console.error('sidebarDecrypt: Failed to decode data', error);
+    console.error('sidebarDecrypt: Encoded data preview:', encodedData.substring(0, 50) + '...');
+    return null;
+  }
+}
+
+$(document).ready(function() {
+  productJsonSet();
+  $(".increment_btn").click(function () {
+    let inputValue = parseFloat($(".detail-page-qty").text());
+    inputValue++;
+
+    if(!checkOrderLimit(productJson, this)) return;
+    $(".detail-page-qty").html(inputValue);
+    updateTotalPrice()
+  });
+
+  $(".decrement_btn").click(function () {
+    let inputValue = parseFloat($(".detail-page-qty").text());
+    if (inputValue > 1) {
+      inputValue--;
+      $(".detail-page-qty").html(inputValue);
+      updateTotalPrice()
+    }
+  });
+  $('#currentLoc').on('shown.bs.modal', function () {
+    let cartData = JSON.parse(localStorage.getItem("cart")) || [];
+    let branches_data = JSON.parse(localStorage.getItem("branches_data")) || {};
+    let order_type = getCookie("order_type");
+  if (cartData && cartData.length != 0 && branches_data.branches.length > 1) {
+      $('.show-error-if-branch-not-selected').text('Changing the branch will remove all items from your cart')
+    }
+    if (order_type === "pickup") {
+      $('#delivery_tab a').removeClass('active');
+      $('#pick_up_tab a').addClass('active');
+      $("#delivery-loc").removeClass('show active');
+      $("#pickup-loc").addClass('show active');
+    } else {
+    $('#delivery_tab a').addClass('active');
+    $('#pick_up_tab a').removeClass('active');
+    $("#delivery-loc").addClass('show active');
+    $("#pickup-loc").removeClass('show active');
+  }
+  
+  });
+});
+
+function addToCart(productJson, sidebar_item = '') {
+  try {
+    let price = sidebar_item == 1 ? productJson.dprice : productJson.price;
+
+    // Clear previous ecommerce data
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ ecommerce: null });
+
+    // Push add_to_cart event in GA4 format
+    window.dataLayer.push({
+      event: "add_to_cart",
+      ecommerce: {
+        currency: productJson.currency,
+        value: parseFloat(price),
+        items: [
+          {
+            item_id: productJson.menu_item_id,
+            item_name: productJson.name,
+            item_brand: productJson.brand,
+            item_category: productJson.category,
+            price: parseFloat(price),
+            currency: productJson.currency,
+            quantity: 1
+          }
+        ]
+      }
+    });
+
+    // Facebook Pixel (only if fbq exists)
+    if (typeof fbq === "function") {
+      fbq('track', 'AddToCart', {
+        content_ids: [productJson.menu_item_id || ""],
+        content_name: productJson.name || "",
+        content_type: 'product',
+        value: parseFloat(price),
+        currency: productJson.currency
+      });
+    }
+
+  } catch (error) {
+    console.error("addToCart Error:", error);
+  }
+}
+
+
+function getCurrencySymbolJs(currencyCode) {
+  // Special case for PKR, where Intl.NumberFormat might not return the correct symbol
+ 
+
+try {
+    // Try using Intl.NumberFormat for most currencies
+    const numberFormat = new Intl.NumberFormat('en-PK', {
+      style: 'currency',
+      currency: currencyCode,
+    });
+
+    const formattedCurrency = numberFormat.format(0); // Format with 0 to get only the symbol
+
+    // Remove digits, commas, periods, and spaces using regex
+    const symbol = formattedCurrency.replace(/[\d.,\s]/g, '').trim();
+
+    // If the symbol is valid, return it
+    if (symbol) {
+      return symbol;
+    }
+  } catch (error) {
+    // Handle any errors if Intl.NumberFormat fails
+    console.error(error);
+  }
+
+  // Return fallback message for unsupported currencies
+  return 'Symbol not found';
+}
+
+function emptyTimeSlots(){
+  $("#pickup_time_slots").html('')
+  const noTimeSlotOption = $("<option disabled selected hidden>No Time Slot</option>");
+  $("#pickup_time_slots").append(noTimeSlotOption);
+}
+
+// First, add this function to handle GA4 remove from cart events
+function removeFromCartEvent(productJson, quantity = 1) {
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ ecommerce: null });  // Clear previous ecommerce object
+  
+  window.dataLayer.push({
+    event: "remove_from_cart",
+    ecommerce: {
+      currency: productJson.currency,
+      value: parseFloat(productJson.price) * quantity,
+      items: [
+        {
+          item_id: productJson.menu_item_id,
+          item_name: productJson.name,
+          item_brand: productJson.brand,
+          item_category: productJson.category,
+          price: parseFloat(productJson.price),
+          currency: productJson.currency,
+          quantity: quantity
+        }
+      ]
+    }
+  });
+}
+
+function viewCartEvent() {
+    let cartData = JSON.parse(localStorage.getItem("cart")) || {};
+    if (!cartData.items || cartData.items.length === 0) return;
+
+    let branchesData = JSON.parse(localStorage.getItem("branches_data")) || {};
+    let currency = branchesData.currencycode || 'USD';
+
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ ecommerce: null });  // Clear previous ecommerce object
+    
+    let totalValue = 0;
+    const items = cartData.items.map(item => {
+        const itemPrice = parseFloat(item.dprice || item.price);
+        const itemQuantity = parseInt(item.qty || 1);
+        totalValue += itemPrice * itemQuantity;
+        
+        return {
+            item_id: item.menu_item_id,
+            item_name: item.name,
+            item_category: item.category || 'Unknown',
+            price: itemPrice,
+            currency: currency,
+            quantity: itemQuantity
+        };
+    });
+
+    window.dataLayer.push({
+        event: "view_cart",
+        ecommerce: {
+            currency: currency,
+            value: totalValue,
+            items: items
+        }
+    });
+}
+
+// Add this to your document ready or where your sidebar event listeners are
+$(document).ready(function() {
+    // Trigger view_cart event when cart sidebar opens
+    $('#offcanvasCartDetail').on('show.bs.offcanvas', function () {
+        viewCartEvent();
+    });
+});
+
+function checkOrderLimit(productJson, clickedElement) {
+
+  // Get the order limit for the product from the productJson
+  let orderLimit = productJson.order_limit;
+
+  // If order limit is not present, try to retrieve and decrypt the product detail from the UI
+  if (!orderLimit) {
+    // Try _product_main first (used in customCards.phtml)
+    let productDetail = $("#" + productJson.menu_item_id + "_product_main").val();
+
+    // If not found, try _product (used in productCard.phtml, featuredProducts.phtml)
+    if (!productDetail) {
+      productDetail = $("#" + productJson.menu_item_id + "_product").val();
+    }
+
+    // If still not found, log warning and allow order (no limit)
+    if (!productDetail) {
+      console.warn('checkOrderLimit: Product detail field not found for menu_item_id:', productJson.menu_item_id);
+      return true;
+    }
+
+    // Decrypt the product detail
+    const decryptedProduct = decryptJson(productDetail);
+
+    // If decryption failed, allow order (no limit)
+    if (!decryptedProduct) {
+      console.warn('checkOrderLimit: Failed to decrypt product detail for menu_item_id:', productJson.menu_item_id);
+      return true;
+    }
+
+    productJson = decryptedProduct;
+    orderLimit = productJson.order_limit;
+  }
+
+  // Log the order limit for debugging
+  console.log('Order limit:', orderLimit);
+
+  // If the order limit is 0 or less, allow the order
+  if (orderLimit <= 0) {
+    return true;
+  }
+
+  // Retrieve the current cart data from localStorage, or set it as an empty object if not found
+  let cartData = JSON.parse(localStorage.getItem("cart")) || { items: [] };
+
+  // Get the current selected quantity near the clicked button (e.g., for an increment/decrement action)
+  let currentSelectedQty = parseFloat($(clickedElement).siblings(".total_qty").text());
+
+  // If the clicked element is an increment button, override the selected quantity
+  if ($(clickedElement).hasClass("increment_btn") ) {
+    currentSelectedQty = parseFloat($(".detail-page-qty").text());
+  }
+
+  // Find the item in the cart by matching menu_item_id
+  let itemInCart = cartData.items.find(item => item.menu_item_id == productJson.menu_item_id);
+
+  // If the item exists in the cart, use its quantity (dqty), else default to 0
+  let cartQty = itemInCart ? parseFloat(itemInCart.dqty) || 0 : 0;
+
+  // Calculate the total quantity by adding the current selected quantity to the quantity in the cart
+
+  if (isNaN(currentSelectedQty)) {
+      currentSelectedQty = 0;
+  }
+
+  let totalQty = cartQty + currentSelectedQty;
+
+  // If the clicked element is an "addition" button, set total quantity to only the cart quantity (don't include the selected qty)
+  if ($(clickedElement).hasClass("addition")) {
+    totalQty = cartQty;
+  }
+
+  // Check if the total quantity exceeds the order limit
+  if (totalQty >= orderLimit) {
+    // If the limit is reached, show a warning and prevent the order
+    showStatus("Order limit reached");
+    return false;
+  }
+
+  // If the order limit is not reached, allow the order
+  return true;
+}
+
+
+$(document).on("click", ".wishlist-icon", function(){
+  let itemId = $(this).data("item-id");
+  let $btn = $(this);
+
+  // Check if item is already in wishlist (red color means it's in wishlist)
+  let isInWishlist = $btn.css("color") === "rgb(255, 0, 0)" || $btn.css("color") === "red";
+
+  // Check if we're on the wishlist page
+  let isWishlistPage = window.location.pathname.includes('/wishlist');
+
+  $btn.html("<div style='width: 16px !important; height: 16px !important;' class='spinner-border loader_popup' role='status'> <span class='sr-only'>Loading...</span></div>");
+
+  if (isInWishlist) {
+    // Remove from wishlist
+    fetch(baseURL+"/api/removeWishlist", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ item_id: itemId }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        console.log(data);
+
+        if (data.success) {
+          // Remove from localStorage
+          let wishlist = JSON.parse(localStorage.getItem("wishlist")) || [];
+          wishlist = wishlist.filter(item => item.item_id != itemId);
+          localStorage.setItem("wishlist", JSON.stringify(wishlist));
+
+          sendUiresponse("Item removed from wishlist");
+
+          // If on wishlist page, remove the product card from DOM
+          if (isWishlistPage) {
+            // Find and remove the product card
+            $btn.closest('.single_product_theme').fadeOut(300, function() {
+              $(this).remove();
+
+              // Check if there are any items left in the wishlist container
+              if ($('#wishlist-items-container .single_product_theme').length === 0) {
+                // Show empty wishlist message
+                $('#wishlist-items-container').html('<div class="col-12 text-center"><p class="mb-3">Your wishlist is empty</p><a href="/" class="btn btn-dark">Continue Shopping</a></div>');
+              }
+            });
+          } else {
+            // Update UI - reset to original color
+            $btn.html("<i class='fas fa-heart'></i>");
+            $btn.css("color", "");
+          }
+        }
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        $btn.html("<i class='fas fa-heart'></i>");
+      });
+  } else {
+    // Add to wishlist
+    fetch(baseURL+"/api/addWishlist", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ item_id: itemId }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        console.log(data);
+
+        // Assuming 'data' is your API response
+        if (data.success && data.data && data.data.result) {
+          const newItem = data.data.result;
+
+          // Get existing wishlist from localStorage
+          let wishlist = JSON.parse(localStorage.getItem("wishlist")) || [];
+
+          // Ensure it's an array
+          if (!Array.isArray(wishlist)) {
+            wishlist = [wishlist];
+          }
+
+          // Append new item (and prevent duplicates if needed)
+          const exists = wishlist.some(item => item.item_id === newItem.item_id);
+          if (!exists) {
+            wishlist.push(newItem);
+          }
+
+          // Save updated wishlist
+          localStorage.setItem("wishlist", JSON.stringify(wishlist));
+
+          // Update UI - set to red
+          $btn.html("<i class='fas fa-heart'></i>");
+          $btn.css("color", "red");
+          sendUiresponse("Item added to wishlist");
+        }
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        $btn.html("<i class='fas fa-heart'></i>");
+      });
+  }
+})
+
+function sendUiresponse(data) {
+    showStatus(data);
+}

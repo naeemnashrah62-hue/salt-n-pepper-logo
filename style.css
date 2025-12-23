@@ -1,7 +1,11 @@
 body{
-    background-color:white;
+    width: 100%;
+    background-color:black;
 }
-
+*{
+    margin: 0%;
+    padding: 0%;
+}
 header{
     display: flex;
     background-color: black;
@@ -43,21 +47,572 @@ header{
     color: white;
     border: 1px solid white;
     padding: 15px 23px;
-    border-radius: 35%;
+    border-radius: 50px;
 }
 .btns{
     display: flex;
     gap: 10px;
-    border-radius: 35px;
+    border-radius: 50px;
     align-items: center;
 }
 
 #Order{
     background-color: red;
 }
+/*banner*/
 
-i.red{
-    color: red !important;
-    background-color: white;
-    padding: 10px;
+.banner{
+    width: 100%;
+    
 }
+
+.banner img{
+    width: 100%;
+    background-color: black;
+}
+
+/*logo start*/
+
+.brands .h1{
+    color: white;
+    justify-content: center;
+    display: flex;
+}
+.start{
+    justify-content: center;
+    text-align: center;
+    color: white;
+}
+
+.bold{
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 50px;
+}
+
+.container{
+    background-color: black;
+    margin-top: 30px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.main{
+    width: 250px;
+    text-align: center;
+    margin: 10px;
+}
+.main img{
+    border-radius: 10px;
+    width: 100%;
+    height: 180px;
+}
+button{
+    border-radius: 50px;
+    background-color: black;
+    color: white;
+     margin-top: 10px;
+     padding: 25px;
+}
+/*franchise start*/
+
+.franchise{
+    width: 100%;
+    color: white;
+    padding: 100px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.franchise .content{
+   text-align: center;
+   gap: 0% ;
+}
+.franchise .isb{
+    display: flex;
+    gap: 10%;
+}
+.franchise .isb .color{
+    color: red;
+}
+.franchise .fsl .color{
+    color: red;
+}
+.franchise .bhw .color{
+    color:  red;
+}
+.fsl{
+    display: flex;
+}
+.bhw{
+    display: flex;
+    gap: 5%;
+}
+.franchise .fsl{
+    order:-1;
+    gap: 10%;
+}
+/*franchise end*/
+
+
+/*exmain1 franchise start*/
+
+.express{
+    color: white;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.exmain1{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+
+.sgdpic .red{
+    color: red;
+}
+.sgdpic .headi{
+    color: white;
+    text-align: center;
+}
+.sgdpic .loc{
+    color: grey;
+}
+.sgdpic .num{
+    color: grey;
+}
+.sgdpic .all{
+    text-align: center;
+}
+.sgdpic .bttnn{
+    text-align: center;
+}
+
+
+
+
+.jhepic .red{
+    color: red;
+}
+.jhepic .headi{
+    color: white;
+    text-align: center;
+}
+.jhepic .loc{
+    color: gray;
+}
+.jhepic .num{
+    color: gray;
+}
+.jhepic .bttnn{
+    text-align: center;
+}
+.jhepic .all{
+    text-align: center;
+}
+
+
+
+.fslpic .red{
+    color: red;
+}
+.fslpic .headi{
+    color: white;
+    text-align: center;
+}
+.fslpic .loc{
+    color: gray;
+}
+.fslpic .num{
+    color: grey;
+}
+.fslpic{
+    text-align: center;
+}
+.fslpic .bttnn{
+    text-align: center;
+}
+
+/*exmain1 franchise end*/
+
+/*exmain2 franchise start*/
+
+.exmain2{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+
+.dhapic .red{
+    color: red;
+}
+.dhapic .headi{
+    color: white;
+    text-align: center;
+}
+.dhapic .loc{
+    color: grey;
+}
+.dhapic .num{
+    color: grey;
+}
+.dhapic .all{
+    text-align: center;
+}
+.dhapic .bttnn{
+    text-align: center;
+}
+
+
+
+.bhripic .red{
+    color: red;
+}
+.bhripic .headi{
+    color: white;
+    text-align: center;
+}
+.bhripic .loc{
+    color: gray;
+}
+.bhripic .num{
+    color: grey;
+}
+.bhripic{
+    text-align: center;
+}
+.bhripic .bttnn{
+    text-align: center;
+}
+
+
+
+
+
+
+.gujrpic .red{
+    color: red;
+}
+.gujrpic .headi{
+    color: white;
+    text-align: center;
+}
+.gujrpic .loc{
+    color: gray;
+}
+.gujrpic .num{
+    color: grey;
+}
+.gujrpic{
+    text-align: center;
+}
+.gujrpic .bttnn{
+    text-align: center;
+}
+/*exmain2 franchise end*/
+
+/*exmain3 franchise start*/
+
+.exmain3{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+
+.lhrpic .red{
+    color: red;
+}
+.lhrpic .headi{
+    color: white;
+    text-align: center;
+}
+.lhrpic .loc{
+    color: grey;
+}
+.lhrpic .num{
+    color: grey;
+}
+.lhrpic .all{
+    text-align: center;
+}
+.lhrpic .bttnn{
+    text-align: center;
+}
+
+
+
+.gjrtpic .red{
+    color: red;
+}
+.gjrtpic .headi{
+    color: white;
+    text-align: center;
+}
+.gjrtpic .loc{
+    color: gray;
+}
+.gjrtpic .num{
+    color: grey;
+}
+.gjrtpic{
+    text-align: center;
+}
+.gjrtpic .bttnn{
+    text-align: center;
+}
+
+
+
+.shwlpic .red{
+    color: red;
+}
+.shwlpic .headi{
+    color: white;
+    text-align: center;
+}
+.shwlpic .loc{
+    color: gray;
+}
+.shwlpic .num{
+    color: grey;
+}
+.shwlpic{
+    text-align: center;
+}
+.shwlpic .bttnn{
+    text-align: center;
+}
+
+/*exmain3 franchise end*/
+
+/*exmain4 franchise start*/
+.exmain4{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+
+}
+.burwalpic .red{
+    color: red;
+}
+.burwalpic .headi{
+    color: white;
+    text-align: center;
+}
+.burwalpic .loc{
+    color: grey;
+}
+.burwalpic .num{
+    color: grey;
+}
+.burwalpic .all{
+    text-align: center;
+    color: white;
+}
+.burwalpic .bttnn{
+    text-align: center;
+}
+
+/*exmain4 franchise end*/
+
+/*village franchise start*/
+
+.snp{
+    color: white;
+    justify-content: center;
+    text-align: center;
+    margin-bottom: 15px;
+}
+.snp .boldd{
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: bolder;
+}
+
+.villapic{
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+.villapic .all{
+    -ms-text-kashida-space: 0%;
+}
+.villapic .all .red{
+    color: red;
+}
+.villapic .all .headi{
+    color: white;
+}
+.villapic .all .loc{
+    color: white;
+}
+.villapic .all .num{
+    color: white;
+}
+.villapic .all .btnnn .btnnnn{
+    background-color: rgba(15, 207, 47, 0.781);   
+}
+
+/*village franchise start*/
+
+/*opening soon franchises*/
+   
+.saltnp .bold {
+    color: white;
+    margin-top: 50px;
+    font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+   font-weight: bolder;
+}
+.saltnp .bigg{
+    color: white;
+    margin-bottom: 30px;
+}
+.saltnp{
+    text-align: center;
+    margin-top: 15px;
+    justify-content: space-around;
+    margin-left: 20px;
+    margin-right: 20px;
+    justify-content: center;
+    margin-bottom: 100px;
+
+}
+.saltnp .loc{
+    display: flex;
+    justify-content: space-around;
+}
+.saltnp .loc2{
+    display: flex;
+    justify-content: space-around;
+    margin-top: 25px;
+}
+/*opening soon franchises*/
+
+
+
+/*opening franchises details*/
+.details{
+    margin-bottom: 150px;
+    display: flex;
+    width: 100%;
+}
+.details .links{
+    display: flex;
+}
+.details .pict{
+    margin-top: 100px;
+    margin-left: 150px;
+
+}
+.details .para{
+    margin-top: 50px;
+    color: grey;
+    margin-left: 150px;
+    gap: 40px;
+}
+.details .links{
+    color: grey;
+}
+.details .bold{
+    color: white;
+    font-weight: small;
+}
+.details .contact .all{
+    color: grey;
+}
+.details .links{
+    color: white;
+}
+
+.last{
+    color: white;
+}
+.footer-links li{
+    list-style: none;
+    flex-direction: column;
+}
+.footer-links li a{
+    text-decoration: none;
+    color: grey;
+}
+
+.links {
+    display: flex;
+    flex-direction: column;
+    justify-content: end;
+    margin-left: 30px;
+    gap: 40px;
+}
+.contact{
+    color: white;
+}
+.footer-links .gap{
+    gap: 40px;
+    column-gap: 40px;
+    margin: 10px 0px 20px 0px;
+    margin-left: 30px;
+}
+
+.cont .all{
+    color: white;
+    display: flex;
+}
+.cont .grey{
+    color: grey;
+
+}
+.cont .all{
+    margin-bottom: 15px;
+    margin-top: 15px;
+
+}
+.cont{
+    padding-left: 80px;
+}
+.last{
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-left: 120px;
+}
+.last .all{
+    
+}
+.social-icons{
+    display: flex;
+    gap: 10px;
+}
+.social-icons i{
+    width: 40px;
+    height: 40px;
+    background-color: rgba(255, 0, 0, 0.719);
+    border-radius: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
